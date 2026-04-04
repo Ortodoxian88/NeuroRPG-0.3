@@ -361,7 +361,7 @@ export default function RoomView({ roomId, onLeave, onOpenBestiary }: RoomViewPr
       <div className="flex-1 flex flex-col p-4 overflow-y-auto pb-20">
         <div className="w-full bg-neutral-900 border border-neutral-800 rounded-xl p-6 space-y-6">
           <div>
-            <h2 className="text-xl font-semibold text-white">Создание персонажа</h2>
+            <h2 className="text-xl font-semibold text-white font-display">Создание персонажа</h2>
             <p className="text-sm text-neutral-400 mt-1">Код комнаты: <span className="font-mono text-white">{roomId}</span></p>
           </div>
           
@@ -434,7 +434,7 @@ export default function RoomView({ roomId, onLeave, onOpenBestiary }: RoomViewPr
               transition={{ delay: 0.3 }}
               className="text-center"
             >
-              <h3 className="text-2xl font-bold text-white mb-1">{showDiceRoll.player}</h3>
+              <h3 className="text-2xl font-bold text-white mb-1 font-display">{showDiceRoll.player}</h3>
               <p className="text-orange-400 text-lg">бросает кубик (d20)</p>
             </motion.div>
           </motion.div>
@@ -445,7 +445,7 @@ export default function RoomView({ roomId, onLeave, onOpenBestiary }: RoomViewPr
       <div className="flex-1 overflow-y-auto pb-[140px]">
         {activeTab === 'inventory' && (
           <div className="p-4 space-y-4">
-            <h2 className="text-xl font-bold text-white flex items-center gap-2 mb-6">
+            <h2 className="text-xl font-bold text-white flex items-center gap-2 mb-6 font-display">
               <Backpack className="text-orange-500" /> Инвентарь
             </h2>
             {me.inventory.length === 0 ? (
@@ -465,7 +465,7 @@ export default function RoomView({ roomId, onLeave, onOpenBestiary }: RoomViewPr
 
         {activeTab === 'state' && (
           <div className="p-4 space-y-6">
-            <h2 className="text-xl font-bold text-white flex items-center gap-2 mb-2">
+            <h2 className="text-xl font-bold text-white flex items-center gap-2 mb-2 font-display">
               <Sparkles className="text-orange-500" /> Состояние
             </h2>
             
@@ -517,7 +517,7 @@ export default function RoomView({ roomId, onLeave, onOpenBestiary }: RoomViewPr
                   <Users size={32} className="text-neutral-500" />
                 </div>
                 <div>
-                  <h2 className="text-xl font-bold text-white mb-2">Ожидание в лобби</h2>
+                  <h2 className="text-xl font-bold text-white mb-2 font-display">Ожидание в лобби</h2>
                   <p className="text-neutral-400 text-sm">
                     Код комнаты: <span className="font-mono text-white bg-neutral-800 px-2 py-1 rounded mx-1">{roomId}</span>
                   </p>

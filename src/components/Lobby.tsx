@@ -56,7 +56,7 @@ export default function Lobby({ onOpenBestiary }: LobbyProps) {
         
         <div className="bg-neutral-900 border border-neutral-800 rounded-xl p-6 space-y-6">
           <div>
-            <h2 className="text-xl font-semibold text-white flex items-center gap-2">
+            <h2 className="text-xl font-semibold text-white flex items-center gap-2 font-display">
               <Plus size={20} className="text-orange-500" />
               Создать новую игру
             </h2>
@@ -94,7 +94,7 @@ export default function Lobby({ onOpenBestiary }: LobbyProps) {
 
         <div className="bg-neutral-900 border border-neutral-800 rounded-xl p-6 space-y-6">
           <div>
-            <h2 className="text-xl font-semibold text-white flex items-center gap-2">
+            <h2 className="text-xl font-semibold text-white flex items-center gap-2 font-display">
               <LogIn size={20} className="text-orange-500" />
               Присоединиться к игре
             </h2>

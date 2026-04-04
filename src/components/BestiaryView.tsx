@@ -26,7 +26,7 @@ export default function BestiaryView({ onBack }: { onBack: () => void }) {
         <button onClick={onBack} className="p-2 hover:bg-neutral-900 rounded-full transition-colors">
           <ArrowLeft size={24} className="text-orange-500" />
         </button>
-        <h1 className="text-xl font-bold text-white flex items-center gap-2">
+        <h1 className="text-xl font-bold text-white flex items-center gap-2 font-display">
           <BookOpen className="text-orange-500" /> Бестиарий
         </h1>
       </div>
@@ -52,7 +52,7 @@ export default function BestiaryView({ onBack }: { onBack: () => void }) {
         ) : (
           filteredEntries.map(entry => (
             <div key={entry.id} className="bg-neutral-900 border border-neutral-800 rounded-xl p-4">
-              <h2 className="text-lg font-bold text-orange-500 mb-2">{entry.title}</h2>
+              <h2 className="text-lg font-bold text-orange-500 mb-2 font-display">{entry.title}</h2>
               <div className="whitespace-pre-wrap text-sm text-neutral-300 leading-relaxed">{entry.content}</div>
             </div>
           ))
