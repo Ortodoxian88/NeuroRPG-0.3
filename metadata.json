@@ -1,0 +1,5 @@
+{
+  "name": "SyncRPG",
+  "description": "Multiplayer synchronous RPG with AI Game Master",
+  "requestFramePermissions": []
+}

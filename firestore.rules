@@ -1,0 +1,65 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+    
+    function isOwner(userId) {
+      return isAuthenticated() && request.auth.uid == userId;
+    }
+
+    match /users/{userId} {
+      allow read, write: if isOwner(userId);
+    }
+
+    match /bestiary/{entryId} {
+      allow read: if isAuthenticated();
+      allow create, update: if isAuthenticated();
+    }
+
+    match /rooms/{roomId} {
+      allow read: if isAuthenticated();
+      
+      allow create: if isAuthenticated() 
+                    && request.resource.data.hostId == request.auth.uid
+                    && request.resource.data.keys().hasAll(['hostId', 'scenario', 'turn', 'status', 'createdAt'])
+                    && request.resource.data.status in ['lobby', 'playing']
+                    && request.resource.data.turn == 0;
+                    
+      allow update: if isAuthenticated() 
+                    && request.resource.data.hostId == resource.data.hostId
+                    && (
+                      resource.data.hostId == request.auth.uid
+                      || request.resource.data.diff(resource.data).affectedKeys().hasOnly(['currentRoll'])
+                    );
+                    
+      match /players/{playerId} {
+        allow read: if isAuthenticated();
+        
+        allow create: if isAuthenticated()
+                      && playerId == request.auth.uid
+                      && request.resource.data.uid == request.auth.uid
+                      && request.resource.data.keys().hasAll(['uid', 'name', 'profile', 'inventory', 'skills', 'action', 'isReady', 'joinedAt']);
+                      
+        allow update: if isAuthenticated()
+                      && (
+                        (playerId == request.auth.uid && request.resource.data.uid == resource.data.uid)
+                        || 
+                        (get(/databases/$(database)/documents/rooms/$(roomId)).data.hostId == request.auth.uid)
+                      );
+      }
+      
+      match /messages/{messageId} {
+        allow read: if isAuthenticated();
+        
+        allow create: if isAuthenticated()
+                      && get(/databases/$(database)/documents/rooms/$(roomId)).data.hostId == request.auth.uid
+                      && request.resource.data.keys().hasAll(['role', 'content', 'turn', 'createdAt']);
+                      
+        allow update: if false;
+      }
+    }
+  }
+}

@@ -1,0 +1,105 @@
+{
+  "entities": {
+    "User": {
+      "title": "User",
+      "description": "User profile for persistence",
+      "type": "object",
+      "properties": {
+        "currentRoomId": {
+          "type": "string",
+          "description": "The room the user is currently in"
+        }
+      }
+    },
+    "Room": {
+      "title": "Room",
+      "description": "A game room where players interact",
+      "type": "object",
+      "properties": {
+        "hostId": { "type": "string" },
+        "scenario": { "type": "string" },
+        "turn": { "type": "number" },
+        "status": { "type": "string", "enum": ["lobby", "playing"] },
+        "quests": { "type": "array", "items": { "type": "string" } },
+        "currentRoll": { 
+          "type": "object",
+          "properties": {
+            "playerUid": { "type": "string" },
+            "playerName": { "type": "string" },
+            "value": { "type": "number" },
+            "timestamp": { "type": "number" }
+          }
+        },
+        "createdAt": { "type": "timestamp" }
+      },
+      "required": ["hostId", "scenario", "turn", "status", "createdAt"]
+    },
+    "Player": {
+      "title": "Player",
+      "description": "A player in a room",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string" },
+        "name": { "type": "string" },
+        "profile": { "type": "string" },
+        "inventory": { "type": "array", "items": { "type": "string" } },
+        "skills": { "type": "array", "items": { "type": "string" } },
+        "hp": { "type": "number" },
+        "maxHp": { "type": "number" },
+        "mana": { "type": "number" },
+        "maxMana": { "type": "number" },
+        "action": { "type": "string" },
+        "isHiddenAction": { "type": "boolean" },
+        "isReady": { "type": "boolean" },
+        "joinedAt": { "type": "timestamp" }
+      },
+      "required": ["uid", "name", "profile", "inventory", "skills", "action", "isReady", "joinedAt"]
+    },
+    "Message": {
+      "title": "Message",
+      "description": "A message in the game log",
+      "type": "object",
+      "properties": {
+        "role": { "type": "string", "enum": ["system", "ai", "players"] },
+        "content": { "type": "string" },
+        "playerActions": { "type": "array" },
+        "turn": { "type": "number" },
+        "createdAt": { "type": "timestamp" }
+      },
+      "required": ["role", "content", "turn", "createdAt"]
+    },
+    "BestiaryEntry": {
+      "title": "BestiaryEntry",
+      "description": "An entry in the bestiary",
+      "type": "object",
+      "properties": {
+        "title": { "type": "string" },
+        "content": { "type": "string" },
+        "discoveredAt": { "type": "timestamp" }
+      },
+      "required": ["title", "content", "discoveredAt"]
+    }
+  },
+  "firestore": {
+    "/users/{userId}": {
+      "schema": { "$ref": "#/entities/User" },
+      "description": "User profiles"
+    },
+    "/rooms/{roomId}": {
+      "schema": { "$ref": "#/entities/Room" },
+      "description": "Game rooms"
+    },
+    "/rooms/{roomId}/players/{playerId}": {
+      "schema": { "$ref": "#/entities/Player" },
+      "description": "Players in a room"
+    },
+    "/rooms/{roomId}/messages/{messageId}": {
+      "schema": { "$ref": "#/entities/Message" },
+      "description": "Game log messages"
+    },
+    "/bestiary/{entryId}": {
+      "schema": { "$ref": "#/entities/BestiaryEntry" },
+      "description": "Bestiary entries"
+    }
+  }
+}
