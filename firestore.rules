@@ -55,7 +55,10 @@ service cloud.firestore {
         allow read: if isAuthenticated();
         
         allow create: if isAuthenticated()
-                      && get(/databases/$(database)/documents/rooms/$(roomId)).data.hostId == request.auth.uid
+                      && (
+                        get(/databases/$(database)/documents/rooms/$(roomId)).data.hostId == request.auth.uid
+                        || exists(/databases/$(database)/documents/rooms/$(roomId)/players/$(request.auth.uid))
+                      )
                       && request.resource.data.keys().hasAll(['role', 'content', 'turn', 'createdAt']);
                       
         allow update: if false;
