@@ -2,10 +2,11 @@ import React, { useEffect, useState, useRef } from 'react';
 import { doc, onSnapshot, collection, query, orderBy, setDoc, serverTimestamp, updateDoc } from 'firebase/firestore';
 import { db, auth } from '../firebase';
 import { Room, Player, Message } from '../types';
-import { Send, Users, Play, Loader2, Backpack, MessageSquare, Sparkles, Mic, Dices, X } from 'lucide-react';
+import { Send, Users, Play, Loader2, Backpack, MessageSquare, Sparkles, Mic, Dices, X, Download, UserMinus } from 'lucide-react';
 import { cn } from '../lib/utils';
 import { motion, AnimatePresence } from 'motion/react';
 import Markdown from 'react-markdown';
+import { typingIndicators } from '../lib/indicators';
 
 interface RoomViewProps {
   roomId: string;
@@ -42,6 +43,7 @@ export default function RoomView({ roomId, onLeave, onOpenBestiary }: RoomViewPr
   const [filteredCommands, setFilteredCommands] = useState(COMMANDS);
   const [isRecording, setIsRecording] = useState(false);
   const [showDiceRoll, setShowDiceRoll] = useState<{ player: string, value: number } | null>(null);
+  const [typingIndicator, setTypingIndicator] = useState('');
   
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const generatingTurnRef = useRef<number | null>(null);
@@ -50,6 +52,87 @@ export default function RoomView({ roomId, onLeave, onOpenBestiary }: RoomViewPr
   const isHost = Boolean(currentUser && room?.hostId === currentUser.uid);
   const me = players.find(p => p.uid === currentUser?.uid);
   const hasJoined = !!me;
+  const isSpectator = !isHost && !me;
+
+  // Typing indicator logic
+  useEffect(() => {
+    if (room?.isGenerating) {
+      setTypingIndicator(typingIndicators[Math.floor(Math.random() * typingIndicators.length)]);
+      const interval = setInterval(() => {
+        setTypingIndicator(typingIndicators[Math.floor(Math.random() * typingIndicators.length)]);
+      }, 4000);
+      return () => clearInterval(interval);
+    }
+  }, [room?.isGenerating]);
+
+  // Auto-summarization logic
+  const isSummarizingRef = useRef(false);
+  useEffect(() => {
+    const summarizeStory = async () => {
+      if (!room || !isHost || room.turn === 0 || room.turn % 5 !== 0 || room.lastSummaryTurn === room.turn || isSummarizingRef.current) return;
+      
+      isSummarizingRef.current = true;
+      try {
+        const recentMessages = messages
+          .slice(-20)
+          .map(m => `${m.role === 'system' ? 'ГМ' : m.role === 'ai' ? 'ИИ' : m.playerName}: ${m.content}`)
+          .join('\n\n');
+
+        const response = await fetch('/api/gemini/summarize', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            currentSummary: room.storySummary || "",
+            recentMessages
+          })
+        });
+
+        if (response.ok) {
+          const data = await response.json();
+          await updateDoc(doc(db, 'rooms', roomId), {
+            storySummary: data.text,
+            lastSummaryTurn: room.turn
+          });
+        } else {
+          // Mark as summarized even on failure to prevent infinite retries
+          await updateDoc(doc(db, 'rooms', roomId), {
+            lastSummaryTurn: room.turn
+          });
+        }
+      } catch (error) {
+        console.error("Error summarizing story:", error);
+        // Mark as summarized even on failure to prevent infinite retries
+        await updateDoc(doc(db, 'rooms', roomId), {
+          lastSummaryTurn: room.turn
+        });
+      } finally {
+        isSummarizingRef.current = false;
+      }
+    };
+
+    summarizeStory();
+  }, [room?.turn, isHost, roomId, messages, room?.lastSummaryTurn, room?.storySummary]);
+
+  const exportLog = () => {
+    const text = messages.map(m => `[Ход ${m.turn}] ${m.role === 'system' ? 'ГМ' : m.role === 'ai' ? 'ИИ' : m.playerName}: ${m.content}`).join('\n\n');
+    const blob = new Blob([text], { type: 'text/plain;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `NeuroRPG_Log_${roomId}.txt`;
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+
+  const kickPlayer = async (uid: string) => {
+    if (!isHost || !window.confirm("Вы уверены, что хотите исключить этого игрока?")) return;
+    try {
+      await deleteDoc(doc(db, 'rooms', roomId, 'players', uid));
+    } catch (error) {
+      console.error("Error kicking player:", error);
+      alert("Не удалось исключить игрока.");
+    }
+  };
 
   useEffect(() => {
     if (!roomId) return;
@@ -278,14 +361,17 @@ export default function RoomView({ roomId, onLeave, onOpenBestiary }: RoomViewPr
         return p.isHiddenAction ? `${p.name} (ТАЙНО): ${actionStr}` : `${p.name}: ${actionStr}`;
       }).join('\n');
       
-      const recentMessages = messages.slice(-15).map(m => {
-        if (m.role === 'system') return `Гейм-мастер (Система): ${m.content}`;
-        if (m.role === 'ai') return `Гейм-мастер (ИИ): ${m.content}`;
-        if (m.role === 'player') {
-          return m.isHidden ? `${m.playerName} (ТАЙНО): ${m.content}` : `${m.playerName}: ${m.content}`;
-        }
-        return `Действия игроков:\n${m.content}`;
-      }).join('\n\n');
+      const recentMessages = messages
+        .filter(m => !(m.turn === room.turn && m.role === 'player'))
+        .slice(-15)
+        .map(m => {
+          if (m.role === 'system') return `Гейм-мастер (Система): ${m.content}`;
+          if (m.role === 'ai') return `Гейм-мастер (ИИ): ${m.content}`;
+          if (m.role === 'player') {
+            return m.isHidden ? `${m.playerName} (ТАЙНО): ${m.content}` : `${m.playerName}: ${m.content}`;
+          }
+          return `Действия игроков:\n${m.content}`;
+        }).join('\n\n');
 
       const playersContext = players.map(p => 
         `- ${p.name} (UID: ${p.uid})\n  HP: ${p.hp}/${p.maxHp}, Mana: ${p.mana}/${p.maxMana}\n  Анкета: ${p.profile}\n  Инвентарь: ${p.inventory.join(', ')}\n  Навыки: ${p.skills.join(', ')}`
@@ -308,11 +394,26 @@ export default function RoomView({ roomId, onLeave, onOpenBestiary }: RoomViewPr
       let aiText = data.text || "Гейм-мастер молчит...";
       
       // Parse JSON block if exists
-      const jsonMatch = aiText.match(/```json\s*([\s\S]*?)\s*```/);
-      if (jsonMatch) {
+      let jsonString = null;
+      let textToRemove = '';
+      
+      const markdownMatch = aiText.match(/```(?:json)?\s*([\s\S]*?)\s*```/i);
+      if (markdownMatch) {
+        jsonString = markdownMatch[1];
+        textToRemove = markdownMatch[0];
+      } else {
+        // Fallback: try to find a raw JSON object at the end of the text
+        const rawJsonMatch = aiText.match(/(\{\s*(?:"stateUpdates"|"bestiary")[\s\S]*\})\s*$/i);
+        if (rawJsonMatch) {
+          jsonString = rawJsonMatch[1];
+          textToRemove = rawJsonMatch[0];
+        }
+      }
+
+      if (jsonString) {
         try {
-          const parsed = JSON.parse(jsonMatch[1]);
-          aiText = aiText.replace(jsonMatch[0], '').trim();
+          const parsed = JSON.parse(jsonString);
+          aiText = aiText.replace(textToRemove, '').trim();
           
           if (parsed.stateUpdates && Array.isArray(parsed.stateUpdates)) {
             for (const update of parsed.stateUpdates) {
@@ -370,7 +471,7 @@ export default function RoomView({ roomId, onLeave, onOpenBestiary }: RoomViewPr
 
     } catch (error) {
       console.error("Error generating AI response", error);
-      generatingTurnRef.current = null; // Reset so it can retry if needed
+      // DO NOT reset generatingTurnRef here, otherwise useEffect will trigger an infinite loop
       setGenerationError("Ошибка при генерации ответа. Попробуйте еще раз.");
       await updateDoc(doc(db, 'rooms', roomId), { isGenerating: false });
     }
@@ -380,7 +481,7 @@ export default function RoomView({ roomId, onLeave, onOpenBestiary }: RoomViewPr
     return <div className="flex-1 flex items-center justify-center"><Loader2 className="animate-spin text-neutral-500" /></div>;
   }
 
-  if (!hasJoined) {
+  if (!hasJoined && !isHost && room.status === 'lobby') {
     return (
       <div className="flex-1 flex flex-col p-4 overflow-y-auto pb-20">
         <div className="w-full bg-neutral-900 border border-neutral-800 rounded-xl p-6 space-y-6">
@@ -466,17 +567,19 @@ export default function RoomView({ roomId, onLeave, onOpenBestiary }: RoomViewPr
       </AnimatePresence>
 
       {/* Main Content Area */}
-      <div className="flex-1 overflow-y-auto pb-[140px]">
+      <div className="flex-1 overflow-y-auto flex flex-col">
         {activeTab === 'inventory' && (
           <div className="p-4 space-y-4">
             <h2 className="text-xl font-bold text-white flex items-center gap-2 mb-6 font-display">
               <Backpack className="text-orange-500" /> Инвентарь
             </h2>
-            {me.inventory.length === 0 ? (
+            {isSpectator ? (
+              <p className="text-neutral-500 text-center py-8">Вы наблюдатель. У вас нет инвентаря.</p>
+            ) : me?.inventory.length === 0 ? (
               <p className="text-neutral-500 text-center py-8">Ваши карманы пусты.</p>
             ) : (
               <ul className="space-y-2">
-                {me.inventory.map((item, i) => (
+                {me?.inventory.map((item, i) => (
                   <li key={i} className="bg-neutral-900 border border-neutral-800 p-3 rounded-lg text-neutral-200 flex items-center gap-3">
                     <div className="w-2 h-2 rounded-full bg-orange-500/50" />
                     {item}
@@ -489,52 +592,96 @@ export default function RoomView({ roomId, onLeave, onOpenBestiary }: RoomViewPr
 
         {activeTab === 'state' && (
           <div className="p-4 space-y-6">
-            <h2 className="text-xl font-bold text-white flex items-center gap-2 mb-2 font-display">
-              <Sparkles className="text-orange-500" /> Состояние
+            <h2 className="text-xl font-bold text-white flex items-center justify-between mb-2 font-display">
+              <div className="flex items-center gap-2">
+                <Sparkles className="text-orange-500" /> Состояние
+              </div>
+              {isHost && (
+                <button onClick={exportLog} className="text-xs flex items-center gap-1 bg-neutral-800 hover:bg-neutral-700 px-2 py-1 rounded transition-colors text-neutral-300">
+                  <Download size={14} /> Экспорт лога
+                </button>
+              )}
             </h2>
             
-            <div className="bg-neutral-900 border border-neutral-800 rounded-xl p-4 space-y-4">
-              <div className="space-y-1">
-                <div className="flex justify-between text-sm">
-                  <span className="text-red-400 font-medium">Здоровье (HP)</span>
-                  <span className="text-neutral-300">{me.hp} / {me.maxHp}</span>
-                </div>
-                <div className="h-2 bg-neutral-800 rounded-full overflow-hidden">
-                  <div className="h-full bg-red-500 transition-all" style={{ width: `${Math.max(0, Math.min(100, (me.hp / me.maxHp) * 100))}%` }} />
-                </div>
+            {isSpectator ? (
+              <div className="space-y-4">
+                <p className="text-neutral-500 text-sm mb-4">Вы наблюдатель. Состояние игроков:</p>
+                {players.map(p => (
+                  <div key={p.uid} className="bg-neutral-900 border border-neutral-800 rounded-xl p-4 space-y-2">
+                    <div className="flex justify-between items-center">
+                      <span className="font-bold text-white">{p.name}</span>
+                      <span className="text-xs text-neutral-400">HP: {p.hp}/{p.maxHp} | MP: {p.mana}/{p.maxMana}</span>
+                    </div>
+                  </div>
+                ))}
               </div>
-              
-              <div className="space-y-1">
-                <div className="flex justify-between text-sm">
-                  <span className="text-blue-400 font-medium">Мана (MP)</span>
-                  <span className="text-neutral-300">{me.mana} / {me.maxMana}</span>
+            ) : (
+              <>
+                <div className="bg-neutral-900 border border-neutral-800 rounded-xl p-4 space-y-4">
+                  <div className="space-y-1">
+                    <div className="flex justify-between text-sm">
+                      <span className="text-red-400 font-medium">Здоровье (HP)</span>
+                      <span className="text-neutral-300">{me?.hp} / {me?.maxHp}</span>
+                    </div>
+                    <div className="h-2 bg-neutral-800 rounded-full overflow-hidden">
+                      <div className="h-full bg-red-500 transition-all" style={{ width: `${Math.max(0, Math.min(100, ((me?.hp || 0) / (me?.maxHp || 1)) * 100))}%` }} />
+                    </div>
+                  </div>
+                  
+                  <div className="space-y-1">
+                    <div className="flex justify-between text-sm">
+                      <span className="text-blue-400 font-medium">Мана (MP)</span>
+                      <span className="text-neutral-300">{me?.mana} / {me?.maxMana}</span>
+                    </div>
+                    <div className="h-2 bg-neutral-800 rounded-full overflow-hidden">
+                      <div className="h-full bg-blue-500 transition-all" style={{ width: `${Math.max(0, Math.min(100, ((me?.mana || 0) / (me?.maxMana || 1)) * 100))}%` }} />
+                    </div>
+                  </div>
                 </div>
-                <div className="h-2 bg-neutral-800 rounded-full overflow-hidden">
-                  <div className="h-full bg-blue-500 transition-all" style={{ width: `${Math.max(0, Math.min(100, (me.mana / me.maxMana) * 100))}%` }} />
-                </div>
-              </div>
-            </div>
 
-            <div>
-              <h3 className="text-sm font-medium text-neutral-400 mb-3 uppercase tracking-wider">Навыки</h3>
-              {me.skills.length === 0 ? (
-                <p className="text-neutral-500 text-sm">У вас нет особых навыков.</p>
-              ) : (
-                <ul className="space-y-2">
-                  {me.skills.map((skill, i) => (
-                    <li key={i} className="bg-neutral-900 border border-neutral-800 p-3 rounded-lg text-neutral-200 flex items-center gap-3 text-sm">
-                      <div className="w-1.5 h-1.5 rounded-full bg-orange-500/50" />
-                      {skill}
-                    </li>
+                <div>
+                  <h3 className="text-sm font-medium text-neutral-400 mb-3 uppercase tracking-wider">Навыки</h3>
+                  {me?.skills.length === 0 ? (
+                    <p className="text-neutral-500 text-sm">У вас нет особых навыков.</p>
+                  ) : (
+                    <ul className="space-y-2">
+                      {me?.skills.map((skill, i) => (
+                        <li key={i} className="bg-neutral-900 border border-neutral-800 p-3 rounded-lg text-neutral-200 flex items-center gap-3 text-sm">
+                          <div className="w-1.5 h-1.5 rounded-full bg-orange-500/50" />
+                          {skill}
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                </div>
+              </>
+            )}
+            
+            {/* Host Panel */}
+            {isHost && (
+              <div className="mt-8 pt-6 border-t border-neutral-800">
+                <h3 className="text-sm font-medium text-neutral-400 mb-3 uppercase tracking-wider">Управление игроками</h3>
+                <div className="space-y-2">
+                  {players.map(p => (
+                    <div key={p.uid} className="flex items-center justify-between bg-neutral-900 p-3 rounded-lg border border-neutral-800">
+                      <span className="text-sm text-neutral-200">{p.name}</span>
+                      <button 
+                        onClick={() => kickPlayer(p.uid)}
+                        className="text-red-500 hover:text-red-400 p-1 bg-red-500/10 rounded transition-colors"
+                        title="Исключить игрока"
+                      >
+                        <UserMinus size={16} />
+                      </button>
+                    </div>
                   ))}
-                </ul>
-              )}
-            </div>
+                </div>
+              </div>
+            )}
           </div>
         )}
 
         {activeTab === 'chat' && (
-          <div className="p-4 space-y-6">
+          <div className="p-4 space-y-6 flex-1">
             {room.status === 'lobby' ? (
               <div className="flex flex-col items-center justify-center py-12 text-center space-y-6">
                 <div className="w-16 h-16 bg-neutral-900 rounded-full flex items-center justify-center border border-neutral-800">
@@ -626,7 +773,7 @@ export default function RoomView({ roomId, onLeave, onOpenBestiary }: RoomViewPr
                 {room.isGenerating && (
                   <div className="rounded-xl p-4 bg-neutral-900 border border-neutral-800 text-neutral-100 flex items-center gap-3 text-sm">
                     <Loader2 size={16} className="animate-spin text-orange-500" />
-                    <span className="text-neutral-400 animate-pulse">Гейм-мастер думает...</span>
+                    <span className="text-neutral-400 animate-pulse">{typingIndicator || "Гейм-мастер думает..."}</span>
                   </div>
                 )}
                 
@@ -662,9 +809,13 @@ export default function RoomView({ roomId, onLeave, onOpenBestiary }: RoomViewPr
 
       {/* Input Area (Only visible in Chat tab when playing) */}
       {activeTab === 'chat' && room.status === 'playing' && (
-        <div className="absolute bottom-[72px] left-0 right-0 p-3 bg-gradient-to-t from-black via-black to-transparent">
-          {me.isReady ? (
-            <div className="bg-neutral-900 border border-neutral-800 rounded-lg p-3 text-sm flex items-center justify-between shadow-lg">
+        <div className="shrink-0 p-3 bg-neutral-900 border-t border-neutral-800">
+          {isSpectator ? (
+            <div className="text-center text-neutral-500 py-3 text-sm">
+              Вы находитесь в режиме наблюдателя.
+            </div>
+          ) : me?.isReady ? (
+            <div className="bg-neutral-800 border border-neutral-700 rounded-lg p-3 text-sm flex items-center justify-between">
               <div className="flex items-center gap-3 text-neutral-400 overflow-hidden">
                 <Loader2 size={16} className="animate-spin shrink-0" />
                 <span className="truncate">{me.action}</span>
@@ -673,7 +824,7 @@ export default function RoomView({ roomId, onLeave, onOpenBestiary }: RoomViewPr
           ) : (
             <div className="relative">
               {showCommands && (
-                <div className="absolute bottom-full left-0 right-0 mb-2 bg-neutral-900 border border-neutral-800 rounded-xl shadow-xl overflow-hidden max-h-48 overflow-y-auto">
+                <div className="absolute bottom-full left-0 right-0 mb-2 bg-neutral-900 border border-neutral-800 rounded-xl shadow-xl overflow-hidden max-h-48 overflow-y-auto z-50">
                   {filteredCommands.length > 0 ? (
                     filteredCommands.map((c, i) => (
                       <button
@@ -690,14 +841,14 @@ export default function RoomView({ roomId, onLeave, onOpenBestiary }: RoomViewPr
                   )}
                 </div>
               )}
-              <form onSubmit={handleSubmitAction} className="relative shadow-lg flex gap-2">
+              <form onSubmit={handleSubmitAction} className="flex gap-2">
                 <div className="relative flex-1">
                   <input
                     type="text"
                     value={actionInput}
                     onChange={handleInputChange}
-                    placeholder={`Что делает ${me.name}? (введите / для команд)`}
-                    className="w-full bg-neutral-900 border border-neutral-700 rounded-full py-3 pl-4 pr-12 text-sm text-neutral-100 focus:ring-2 focus:ring-orange-500/50 focus:border-orange-500 outline-none"
+                    placeholder={`Что делает ${me?.name}? (введите / для команд)`}
+                    className="w-full bg-black border border-neutral-700 rounded-full py-3 pl-4 pr-12 text-sm text-neutral-100 focus:ring-2 focus:ring-orange-500/50 focus:border-orange-500 outline-none"
                     disabled={isSubmittingAction || room.isGenerating}
                   />
                   <button
@@ -726,7 +877,7 @@ export default function RoomView({ roomId, onLeave, onOpenBestiary }: RoomViewPr
       )}
 
       {/* Bottom Navigation */}
-      <div className="absolute bottom-0 left-0 right-0 bg-neutral-900 border-t border-neutral-800 flex items-center justify-around p-2 pb-safe z-20">
+      <div className="shrink-0 bg-neutral-900 border-t border-neutral-800 flex items-center justify-around p-2 pb-safe z-20">
         <button
           onClick={() => setActiveTab('inventory')}
           className={cn(

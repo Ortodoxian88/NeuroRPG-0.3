@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { doc, setDoc, serverTimestamp } from 'firebase/firestore';
+import { doc, setDoc, getDoc, serverTimestamp } from 'firebase/firestore';
 import { db, auth } from '../firebase';
 import { Plus, LogIn, BookOpen } from 'lucide-react';
 
@@ -43,9 +43,16 @@ export default function Lobby({ onOpenBestiary }: LobbyProps) {
     if (joinCode.trim() && auth.currentUser) {
       const roomId = joinCode.trim().toUpperCase();
       try {
+        const roomRef = doc(db, 'rooms', roomId);
+        const roomSnap = await getDoc(roomRef);
+        if (!roomSnap.exists()) {
+          alert("Комната с таким кодом не найдена.");
+          return;
+        }
         await setDoc(doc(db, 'users', auth.currentUser.uid), { currentRoomId: roomId }, { merge: true });
       } catch (error) {
         console.error("Error joining room", error);
+        alert("Произошла ошибка при попытке войти в комнату.");
       }
     }
   };

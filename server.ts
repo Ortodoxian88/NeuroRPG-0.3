@@ -55,7 +55,7 @@ async function startServer() {
   const app = express();
   const PORT = 3000;
 
-  app.use(express.json());
+  app.use(express.json({ limit: '1mb' }));
 
   // Fix for Firebase Auth popup Cross-Origin-Opener-Policy issues
   app.use((req, res, next) => {
@@ -86,11 +86,37 @@ async function startServer() {
         }
       });
 
-      const parsed = JSON.parse(response.text || '{"inventory":[], "skills":[]}');
+      let text = response.text || '{"inventory":[], "skills":[]}';
+      const match = text.match(/```(?:json)?\s*([\s\S]*?)\s*```/i);
+      if (match) {
+        text = match[1];
+      }
+      
+      const parsed = JSON.parse(text);
       res.json(parsed);
     } catch (error) {
       console.error(error);
       res.status(500).json({ error: "Failed to generate" });
+    }
+  });
+
+  app.post("/api/gemini/summarize", async (req, res) => {
+    try {
+      const { currentSummary, recentMessages } = req.body;
+      const prompt = `Ты летописец RPG игры. Твоя задача - обновить краткое содержание сюжета.
+Текущее содержание: ${currentSummary || "Начало приключения."}
+Новые события: ${recentMessages}
+
+Напиши обновленное краткое содержание (не более 3-4 абзацев), сохраняя ключевые события и текущую цель героев. Пиши художественно, но емко.`;
+
+      const response = await generateWithFallback(prompt, {
+        // Use low thinking for summarization to save time if supported
+      });
+
+      res.json({ text: response.text });
+    } catch (error) {
+      console.error("Summarize error:", error);
+      res.status(500).json({ error: "Failed to summarize" });
     }
   });
 

@@ -13,6 +13,8 @@ export interface Room {
   quests: string[];
   currentRoll?: { playerUid: string; playerName: string; value: number; timestamp: number } | null;
   isGenerating?: boolean;
+  storySummary?: string;
+  lastSummaryTurn?: number;
   createdAt: Timestamp;
 }
 

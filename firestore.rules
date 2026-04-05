@@ -2,12 +2,13 @@ rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
     
-    function isAuthenticated() {
-      return request.auth != null;
+    function isAuthenticated() { return request.auth != null; }
+    function isOwner(userId) { return isAuthenticated() && request.auth.uid == userId; }
+    function isRoomHost(roomId) {
+      return isAuthenticated() && get(/databases/$(database)/documents/rooms/$(roomId)).data.hostId == request.auth.uid;
     }
-    
-    function isOwner(userId) {
-      return isAuthenticated() && request.auth.uid == userId;
+    function isPlayerInRoom(roomId) {
+      return isAuthenticated() && exists(/databases/$(database)/documents/rooms/$(roomId)/players/$(request.auth.uid));
     }
 
     match /users/{userId} {
@@ -15,53 +16,39 @@ service cloud.firestore {
     }
 
     match /bestiary/{entryId} {
-      allow read: if isAuthenticated();
-      allow create, update: if isAuthenticated();
+      allow read, write: if isAuthenticated();
     }
 
     match /rooms/{roomId} {
       allow read: if isAuthenticated();
-      
-      allow create: if isAuthenticated() 
-                    && request.resource.data.hostId == request.auth.uid
-                    && request.resource.data.keys().hasAll(['hostId', 'scenario', 'turn', 'status', 'createdAt'])
-                    && request.resource.data.status in ['lobby', 'playing']
-                    && request.resource.data.turn == 0;
-                    
-      allow update: if isAuthenticated() 
-                    && request.resource.data.hostId == resource.data.hostId
-                    && (
-                      resource.data.hostId == request.auth.uid
-                      || request.resource.data.diff(resource.data).affectedKeys().hasOnly(['currentRoll'])
-                    );
+      allow create: if isAuthenticated() && request.resource.data.hostId == request.auth.uid;
+      allow update: if isAuthenticated() && (
+        isRoomHost(roomId) ||
+        (isPlayerInRoom(roomId) && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['currentRoll']))
+      );
                     
       match /players/{playerId} {
         allow read: if isAuthenticated();
-        
-        allow create: if isAuthenticated()
-                      && playerId == request.auth.uid
-                      && request.resource.data.uid == request.auth.uid
-                      && request.resource.data.keys().hasAll(['uid', 'name', 'profile', 'inventory', 'skills', 'action', 'isReady', 'joinedAt']);
-                      
-        allow update: if isAuthenticated()
-                      && (
-                        (playerId == request.auth.uid && request.resource.data.uid == resource.data.uid)
-                        || 
-                        (get(/databases/$(database)/documents/rooms/$(roomId)).data.hostId == request.auth.uid)
-                      );
+        allow create: if isAuthenticated() && playerId == request.auth.uid &&
+          request.resource.data.hp == 20 &&
+          request.resource.data.maxHp == 20 &&
+          request.resource.data.mana == 10 &&
+          request.resource.data.maxMana == 10;
+        allow update: if isAuthenticated() && (
+          isRoomHost(roomId) ||
+          (playerId == request.auth.uid && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['action', 'isReady', 'isHiddenAction']))
+        );
+        allow delete: if isRoomHost(roomId) || playerId == request.auth.uid;
       }
       
       match /messages/{messageId} {
         allow read: if isAuthenticated();
-        
-        allow create: if isAuthenticated()
-                      && (
-                        get(/databases/$(database)/documents/rooms/$(roomId)).data.hostId == request.auth.uid
-                        || exists(/databases/$(database)/documents/rooms/$(roomId)/players/$(request.auth.uid))
-                      )
-                      && request.resource.data.keys().hasAll(['role', 'content', 'turn', 'createdAt']);
-                      
-        allow update: if false;
+        allow create: if isRoomHost(roomId) || (
+          isPlayerInRoom(roomId) &&
+          request.resource.data.role == 'player' &&
+          request.resource.data.playerUid == request.auth.uid
+        );
+        allow update, delete: if false;
       }
     }
   }

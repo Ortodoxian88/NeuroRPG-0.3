@@ -5,7 +5,7 @@
 
 import { useEffect, useState } from 'react';
 import { onAuthStateChanged, User } from 'firebase/auth';
-import { doc, onSnapshot, setDoc } from 'firebase/firestore';
+import { doc, onSnapshot, setDoc, deleteDoc } from 'firebase/firestore';
 import { auth, db, signInWithGoogle, logout } from './firebase';
 import Lobby from './components/Lobby';
 import RoomView from './components/RoomView';
@@ -21,6 +21,18 @@ export default function App() {
   const [currentRoomId, setCurrentRoomId] = useState<string | null>(null);
   const [profileLoading, setProfileLoading] = useState(true);
   const [activeView, setActiveView] = useState<ViewState>('main');
+  const [isOffline, setIsOffline] = useState(!navigator.onLine);
+
+  useEffect(() => {
+    const handleOnline = () => setIsOffline(false);
+    const handleOffline = () => setIsOffline(true);
+    window.addEventListener('online', handleOnline);
+    window.addEventListener('offline', handleOffline);
+    return () => {
+      window.removeEventListener('online', handleOnline);
+      window.removeEventListener('offline', handleOffline);
+    };
+  }, []);
 
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, (currentUser) => {
@@ -54,6 +66,13 @@ export default function App() {
 
   const handleLeaveRoom = async () => {
     if (!user) return;
+    if (currentRoomId) {
+      try {
+        await deleteDoc(doc(db, 'rooms', currentRoomId, 'players', user.uid));
+      } catch (e) {
+        console.error("Failed to delete player from room:", e);
+      }
+    }
     await setDoc(doc(db, 'users', user.uid), { currentRoomId: null }, { merge: true });
     setCurrentRoomId(null);
     setActiveView('main');
@@ -87,8 +106,13 @@ export default function App() {
   }
 
   return (
-    <div className="min-h-[100dvh] bg-black text-neutral-100 font-sans flex flex-col max-w-md mx-auto relative shadow-2xl overflow-hidden border-x border-neutral-900">
-      <header className="border-b border-neutral-900 bg-black/80 backdrop-blur-md p-4 flex justify-between items-center z-10">
+    <div className="h-[100dvh] bg-black text-neutral-100 font-sans flex flex-col max-w-md mx-auto relative shadow-2xl overflow-hidden border-x border-neutral-900">
+      {isOffline && (
+        <div className="bg-red-500 text-white text-xs font-bold text-center py-1 z-50 shrink-0">
+          Нет подключения к интернету. Игра работает в офлайн-режиме.
+        </div>
+      )}
+      <header className="shrink-0 border-b border-neutral-900 bg-black/80 backdrop-blur-md p-4 flex justify-between items-center z-10">
         <div className="flex items-center gap-3">
           <h1 
             className="text-lg font-bold text-white tracking-tight cursor-pointer flex items-center gap-2 font-display" 
