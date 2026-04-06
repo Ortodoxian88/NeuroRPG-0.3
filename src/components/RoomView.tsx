@@ -1,7 +1,7 @@
 import React, { useEffect, useState, useRef } from 'react';
 import { doc, onSnapshot, collection, query, orderBy, setDoc, serverTimestamp, updateDoc, deleteDoc, getDoc } from 'firebase/firestore';
 import { db, auth } from '@/src/firebase';
-import { Room, Player, Message } from '@/src/types';
+import { Room, Player, Message, AppSettings, ChatSettings } from '@/src/types';
 import { Users, Play, Loader2, Backpack, MessageSquare, Sparkles, X } from 'lucide-react';
 import { cn } from '@/src/lib/utils';
 import { typingIndicators } from '@/src/lib/indicators';
@@ -19,6 +19,8 @@ interface RoomViewProps {
   onLeave: () => void;
   onMinimize: () => void;
   onOpenBestiary: () => void;
+  appSettings?: AppSettings;
+  chatSettings?: ChatSettings;
 }
 
 type Tab = 'inventory' | 'chat' | 'state' | 'quests';
@@ -31,7 +33,7 @@ const COMMANDS = [
   { cmd: '/eat', desc: 'Съесть/выпить: /eat [предмет]' },
 ];
 
-export default function RoomView({ roomId, onLeave, onMinimize, onOpenBestiary }: RoomViewProps) {
+export default function RoomView({ roomId, onLeave, onMinimize, onOpenBestiary, appSettings, chatSettings }: RoomViewProps) {
   const [room, setRoom] = useState<Room | null>(null);
   const [players, setPlayers] = useState<Player[]>([]);
   const [messages, setMessages] = useState<Message[]>([]);
@@ -626,6 +628,7 @@ export default function RoomView({ roomId, onLeave, onMinimize, onOpenBestiary }
                 onForceTurn={() => { generatingTurnRef.current = room.turn; generateAIResponse(); }}
                 playersCount={players.length}
                 readyPlayersCount={players.filter(p => p.isReady).length}
+                chatSettings={chatSettings}
               />
             )}
           </div>

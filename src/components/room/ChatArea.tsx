@@ -1,5 +1,5 @@
 import React, { useEffect, useRef } from 'react';
-import { Message } from '@/src/types';
+import { Message, ChatSettings } from '@/src/types';
 import { Loader2 } from 'lucide-react';
 import Markdown from 'react-markdown';
 import { cn } from '@/src/lib/utils';
@@ -16,6 +16,7 @@ interface ChatAreaProps {
   onForceTurn: () => void;
   playersCount: number;
   readyPlayersCount: number;
+  chatSettings?: ChatSettings;
 }
 
 export default function ChatArea({
@@ -28,7 +29,8 @@ export default function ChatArea({
   onRetryGeneration,
   onForceTurn,
   playersCount,
-  readyPlayersCount
+  readyPlayersCount,
+  chatSettings
 }: ChatAreaProps) {
   const scrollRef = useRef<HTMLDivElement>(null);
   const lastMessageCount = useRef(messages.length);
@@ -43,10 +45,39 @@ export default function ChatArea({
     lastMessageCount.current = messages.length;
   }, [messages.length]);
 
+  const getFontClass = () => {
+    if (!chatSettings) return 'font-sans';
+    switch (chatSettings.fontFamily) {
+      case 'serif': return 'font-serif';
+      case 'mono': return 'font-mono';
+      case 'dyslexic': return 'font-opendyslexic'; // Assuming you might add this font later
+      default: return 'font-sans';
+    }
+  };
+
+  const getSizeClass = () => {
+    if (!chatSettings) return 'text-sm';
+    switch (chatSettings.fontSize) {
+      case 'sm': return 'text-xs';
+      case 'lg': return 'text-base';
+      default: return 'text-sm';
+    }
+  };
+
+  const getAlignClass = () => {
+    if (!chatSettings) return 'text-left';
+    return chatSettings.textAlign === 'justify' ? 'text-justify' : 'text-left';
+  };
+
   return (
     <div 
       ref={scrollRef}
-      className="flex-1 overflow-y-auto p-4 space-y-6 scroll-smooth"
+      className={cn(
+        "flex-1 overflow-y-auto p-4 space-y-6 scroll-smooth",
+        getFontClass(),
+        getSizeClass(),
+        getAlignClass()
+      )}
     >
       {messages.map(msg => {
         if (msg.role === 'system') {

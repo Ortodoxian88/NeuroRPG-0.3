@@ -43,6 +43,41 @@ export interface Player {
   joinedAt: Timestamp;
 }
 
+export interface AppSettings {
+  goreLevel: 'low' | 'medium' | 'high';
+  theme: 'light' | 'dark' | 'black';
+  language: 'ru' | 'en';
+}
+
+export interface ChatSettings {
+  fontFamily: 'sans' | 'serif' | 'mono' | 'dyslexic'; // 1, 5
+  fontSize: 'sm' | 'md' | 'lg'; // 2
+  lineHeight: 'tight' | 'normal' | 'loose'; // 3
+  tracking: 'tight' | 'normal' | 'wide'; // 4
+  boldNames: boolean; // 6
+  italicActions: boolean; // 7
+  highlightKeywords: boolean; // 8
+  textAlign: 'left' | 'justify'; // 9
+  autoCapitalize: boolean; // 10
+  typewriterSpeed: number; // 11
+  messageStyle: 'bubbles' | 'plain'; // 13
+  compactMode: boolean; // 14
+  showTimestamps: boolean; // 15
+  avatarSize: 'hidden' | 'sm' | 'md' | 'lg'; // 16
+  hideSystemMessages: boolean; // 17
+  playerColors: boolean; // 21
+  aiTextColor: 'default' | 'gold' | 'purple' | 'green'; // 22
+  borderStyle: 'sharp' | 'rounded' | 'fantasy'; // 26
+  shadowIntensity: 'none' | 'sm' | 'md' | 'lg'; // 27
+  linkColor: 'blue' | 'orange' | 'purple'; // 28
+  whisperColor: 'gray' | 'purple' | 'blue'; // 29
+  errorColor: 'red' | 'orange'; // 30
+  autoScroll: boolean; // 31
+  smoothScroll: boolean; // 32
+  enableMarkdown: boolean; // 40
+  focusMode: boolean; // 48
+}
+
 export interface Message {
   id: string;
   role: 'system' | 'ai' | 'players' | 'player';

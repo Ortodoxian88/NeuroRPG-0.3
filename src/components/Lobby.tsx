@@ -1,10 +1,12 @@
 import React, { useState, useEffect } from 'react';
 import { doc, setDoc, getDoc, getDocs, serverTimestamp, collection, query, where, onSnapshot, updateDoc, documentId } from 'firebase/firestore';
 import { db, auth } from '../firebase';
-import { Plus, LogIn, BookOpen, PlayCircle, Shield } from 'lucide-react';
+import { Plus, LogIn, BookOpen, PlayCircle, Shield, Bug, Settings, LogOut } from 'lucide-react';
 
 interface LobbyProps {
   onOpenBestiary: () => void;
+  onOpenSettings: () => void;
+  onOpenReport: () => void;
 }
 
 interface ActiveRoom {
@@ -14,12 +16,16 @@ interface ActiveRoom {
   status: string;
 }
 
-export default function Lobby({ onOpenBestiary }: LobbyProps) {
+export default function Lobby({ onOpenBestiary, onOpenSettings, onOpenReport }: LobbyProps) {
   const [joinCode, setJoinCode] = useState('');
   const [scenario, setScenario] = useState('Вы очнулись в темной, сырой пещере. Вы не помните, как сюда попали. Вдалеке мерцает тусклый свет.');
   const [isCreating, setIsCreating] = useState(false);
   const [activeRooms, setActiveRooms] = useState<ActiveRoom[]>([]);
   const [loadingRooms, setLoadingRooms] = useState(true);
+
+  const handleLogout = () => {
+    auth.signOut();
+  };
 
   useEffect(() => {
     if (!auth.currentUser) return;
@@ -129,123 +135,121 @@ export default function Lobby({ onOpenBestiary }: LobbyProps) {
   };
 
   return (
-    <div className="flex-1 flex flex-col items-center p-4 overflow-y-auto">
-      <div className="w-full space-y-8 pb-8">
+    <div className="flex-1 flex flex-col p-4 overflow-y-auto bg-black">
+      <div className="w-full space-y-6 pb-20">
         
         {/* Active Sessions Section */}
         {activeRooms.length > 0 && (
-          <div className="w-full space-y-4">
-            <h2 className="text-lg font-bold text-white flex items-center gap-2 font-display">
-              <PlayCircle size={20} className="text-orange-500" />
-              Ваши активные сессии
+          <div className="w-full space-y-3">
+            <h2 className="text-sm font-bold text-neutral-400 flex items-center gap-2 uppercase tracking-widest">
+              <PlayCircle size={16} className="text-orange-500" />
+              Активные сессии
             </h2>
-            <div className="grid gap-3">
+            <div className="grid gap-2">
               {activeRooms.map(room => (
                 <button
                   key={room.id}
                   onClick={() => handleSwitchRoom(room.id)}
-                  className="w-full bg-neutral-900 border border-neutral-800 hover:border-orange-500/50 p-4 rounded-xl text-left transition-all group"
+                  className="w-full bg-neutral-900/50 border border-neutral-800 hover:border-orange-500/50 p-3 rounded-2xl text-left transition-all group"
                 >
-                  <div className="flex justify-between items-start mb-2">
-                    <span className="font-mono text-xs text-orange-500 bg-orange-500/10 px-2 py-0.5 rounded">
+                  <div className="flex justify-between items-center mb-1">
+                    <span className="font-mono text-[10px] text-orange-500 bg-orange-500/10 px-2 py-0.5 rounded font-bold">
                       {room.id}
                     </span>
                     {room.hostId === auth.currentUser?.uid && (
-                      <span className="text-[10px] bg-blue-500/20 text-blue-400 px-1.5 py-0.5 rounded flex items-center gap-1">
-                        <Shield size={10} /> ГМ
+                      <span className="text-[9px] bg-blue-500/20 text-blue-400 px-1.5 py-0.5 rounded font-bold uppercase tracking-tighter">
+                        ГМ
                       </span>
                     )}
                   </div>
-                  <p className="text-sm text-neutral-300 line-clamp-2 italic">
+                  <p className="text-xs text-neutral-400 line-clamp-1 italic">
                     "{room.scenario}"
                   </p>
-                  <div className="mt-3 flex items-center justify-between text-[10px] text-neutral-500">
-                    <span>Статус: {room.status === 'lobby' ? 'В лобби' : 'В игре'}</span>
-                    <span className="text-orange-500 opacity-0 group-hover:opacity-100 transition-opacity">Вернуться →</span>
-                  </div>
                 </button>
               ))}
             </div>
           </div>
         )}
         
-        <div className="bg-neutral-900 border border-neutral-800 rounded-xl p-6 space-y-6">
-          <div>
-            <h2 className="text-xl font-semibold text-white flex items-center gap-2 font-display">
-              <Plus size={20} className="text-orange-500" />
-              Создать новую игру
+        <div className="grid grid-cols-1 gap-4">
+          <div className="bg-neutral-900/50 border border-neutral-800 rounded-2xl p-5 space-y-4">
+            <h2 className="text-sm font-bold text-white flex items-center gap-2 uppercase tracking-widest">
+              <Plus size={18} className="text-orange-500" />
+              Новая игра
             </h2>
-            <p className="text-sm text-neutral-400 mt-1">Начните новое приключение в роли Гейм-мастера.</p>
-          </div>
-          
-          <div className="space-y-2">
-            <label className="block text-sm font-medium text-neutral-300">Начальный сценарий</label>
             <textarea
               value={scenario}
               onChange={(e) => setScenario(e.target.value)}
-              rows={4}
-              className="w-full bg-black border border-neutral-800 rounded-lg p-3 text-neutral-100 focus:ring-2 focus:ring-orange-500/50 focus:border-orange-500 outline-none resize-none"
+              rows={3}
+              className="w-full bg-black border border-neutral-800 rounded-xl p-3 text-sm text-neutral-100 focus:ring-2 focus:ring-orange-500/50 focus:border-orange-500 outline-none resize-none"
               placeholder="Опишите стартовую ситуацию..."
             />
+            <button
+              onClick={handleCreateRoom}
+              disabled={isCreating || !scenario.trim()}
+              className="w-full bg-orange-600 hover:bg-orange-500 text-white font-bold py-3 px-4 rounded-xl transition-all active:scale-95 disabled:opacity-50 text-sm"
+            >
+              {isCreating ? 'Создание...' : 'Создать комнату'}
+            </button>
           </div>
-          
-          <button
-            onClick={handleCreateRoom}
-            disabled={isCreating || !scenario.trim()}
-            className="w-full bg-orange-600 hover:bg-orange-500 text-white font-medium py-3 px-4 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-          >
-            {isCreating ? 'Создание...' : 'Создать комнату'}
-          </button>
-        </div>
 
-        <div className="relative">
-          <div className="absolute inset-0 flex items-center">
-            <div className="w-full border-t border-neutral-800"></div>
-          </div>
-          <div className="relative flex justify-center text-sm">
-            <span className="px-2 bg-black text-neutral-500">ИЛИ</span>
-          </div>
-        </div>
-
-        <div className="bg-neutral-900 border border-neutral-800 rounded-xl p-6 space-y-6">
-          <div>
-            <h2 className="text-xl font-semibold text-white flex items-center gap-2 font-display">
-              <LogIn size={20} className="text-orange-500" />
-              Присоединиться к игре
+          <div className="bg-neutral-900/50 border border-neutral-800 rounded-2xl p-5 space-y-4">
+            <h2 className="text-sm font-bold text-white flex items-center gap-2 uppercase tracking-widest">
+              <LogIn size={18} className="text-orange-500" />
+              Присоединиться
             </h2>
-            <p className="text-sm text-neutral-400 mt-1">Введите код комнаты, чтобы присоединиться к друзьям.</p>
-          </div>
-          
-          <form onSubmit={handleJoinRoom} className="space-y-4">
-            <div className="space-y-2">
-              <label className="block text-sm font-medium text-neutral-300">Код комнаты</label>
+            <div className="flex gap-2">
               <input
                 type="text"
                 value={joinCode}
                 onChange={(e) => setJoinCode(e.target.value.toUpperCase())}
-                className="w-full bg-black border border-neutral-800 rounded-lg p-3 text-neutral-100 focus:ring-2 focus:ring-orange-500/50 focus:border-orange-500 outline-none uppercase tracking-widest font-mono"
-                placeholder="Например: A1B2C3"
+                className="flex-1 bg-black border border-neutral-800 rounded-xl p-3 text-sm text-neutral-100 focus:ring-2 focus:ring-orange-500/50 focus:border-orange-500 outline-none uppercase tracking-widest font-mono"
+                placeholder="КОД"
                 maxLength={6}
               />
+              <button
+                onClick={handleJoinRoom}
+                disabled={!joinCode.trim()}
+                className="bg-neutral-800 hover:bg-neutral-700 text-white font-bold px-6 rounded-xl transition-all active:scale-95 disabled:opacity-50 text-sm"
+              >
+                Войти
+              </button>
             </div>
-            <button
-              type="submit"
-              disabled={!joinCode.trim()}
-              className="w-full bg-orange-600 hover:bg-orange-500 text-white font-medium py-3 px-4 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-            >
-              Войти в комнату
-            </button>
-          </form>
+          </div>
         </div>
 
         <button
           onClick={onOpenBestiary}
-          className="w-full bg-neutral-900 border border-neutral-800 hover:bg-neutral-800 text-white font-medium py-4 px-4 rounded-xl transition-colors flex items-center justify-center gap-3"
+          className="w-full bg-neutral-900/50 border border-neutral-800 hover:bg-neutral-800 text-white font-bold py-4 px-4 rounded-2xl transition-all active:scale-95 flex items-center justify-center gap-3 text-sm uppercase tracking-widest"
         >
-          <BookOpen size={20} className="text-orange-500" />
-          Открыть Бестиарий
+          <BookOpen size={18} className="text-orange-500" />
+          Бестиарий
         </button>
+      </div>
 
+      {/* Footer Navigation */}
+      <div className="absolute bottom-0 left-0 right-0 p-4 bg-black/80 backdrop-blur-md border-t border-neutral-900 flex justify-around items-center z-20">
+        <button 
+          onClick={onOpenReport}
+          className="flex flex-col items-center gap-1 text-neutral-500 hover:text-white transition-colors"
+        >
+          <Bug size={20} />
+          <span className="text-[9px] font-bold uppercase tracking-tighter">Баги</span>
+        </button>
+        <button 
+          onClick={onOpenSettings}
+          className="flex flex-col items-center gap-1 text-neutral-500 hover:text-white transition-colors"
+        >
+          <Settings size={20} />
+          <span className="text-[9px] font-bold uppercase tracking-tighter">Опции</span>
+        </button>
+        <button 
+          onClick={handleLogout}
+          className="flex flex-col items-center gap-1 text-neutral-500 hover:text-red-400 transition-colors"
+        >
+          <LogOut size={20} />
+          <span className="text-[9px] font-bold uppercase tracking-tighter">Выход</span>
+        </button>
       </div>
     </div>
   );

@@ -54,10 +54,14 @@ async function generateWithFallback(prompt: string, baseConfig: any, models: str
   let lastError;
   const ai = getAIClient();
 
-  for (const model of models) {
+  // If a specific model is requested in baseConfig, try it first
+  const modelList = baseConfig.model ? [baseConfig.model, ...models.filter(m => m !== baseConfig.model)] : models;
+
+  for (const model of modelList) {
     try {
       console.log(`[AI] Attempting generation with model: ${model}`);
       const config = { ...baseConfig };
+      delete config.model; // Remove from config as it's passed separately
       
       // ThinkingLevel is only for Gemini 3 series. 
       // Lite defaults to MINIMAL, Pro/Flash support HIGH/LOW.
@@ -84,6 +88,7 @@ async function generateWithFallback(prompt: string, baseConfig: any, models: str
   throw lastError;
 }
 
+// Telegram Reporting logic moved inside startServer
 async function startServer() {
   const app = express();
   const PORT = 3000;
@@ -97,6 +102,53 @@ async function startServer() {
     res.setHeader("Cross-Origin-Opener-Policy", "same-origin-allow-popups");
     res.setHeader("Cross-Origin-Embedder-Policy", "unsafe-none");
     next();
+  });
+
+  // Telegram Reporting
+  app.post('/api/report', apiLimiter, async (req, res) => {
+    const { type, message, userEmail, roomId, turn, version } = req.body;
+    
+    const botToken = process.env.TELEGRAM_BOT_TOKEN;
+    const chatId = process.env.TELEGRAM_CHAT_ID;
+
+    if (!botToken || !chatId) {
+      console.error('Telegram bot credentials missing');
+      return res.status(500).json({ error: 'Reporting service unavailable' });
+    }
+
+    const text = `
+🚀 *New NeuroRPG Report*
+-------------------------
+*Type:* ${type}
+*User:* ${userEmail}
+*Room:* ${roomId || 'N/A'}
+*Turn:* ${turn || 0}
+*Version:* ${version || '0.2.9'}
+
+*Message:*
+${message}
+    `.trim();
+
+    try {
+      const response = await fetch(`https://api.telegram.org/bot${botToken}/sendMessage`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          chat_id: chatId,
+          text: text,
+          parse_mode: 'Markdown'
+        })
+      });
+
+      if (!response.ok) {
+        throw new Error(`Telegram API error: ${response.statusText}`);
+      }
+
+      res.json({ success: true });
+    } catch (error) {
+      console.error('Failed to send report to Telegram:', error);
+      res.status(500).json({ error: 'Failed to send report' });
+    }
   });
 
   // API routes FIRST
@@ -179,11 +231,26 @@ async function startServer() {
 
   app.post("/api/gemini/generate", requireAuth, async (req, res) => {
     try {
-      const { playersContext, recentMessages, turn, actionsText, currentQuests, worldState, factions, hiddenTimers } = req.body;
+      const { playersContext, recentMessages, turn, actionsText, currentQuests, worldState, factions, hiddenTimers, gmTone, aiModel, difficulty } = req.body;
       
+      const tonePrompt = gmTone === 'grimdark' ? 'Стиль: Мрачное, жестокое фэнтези. Смерть близка, ресурсы скудны, мир враждебен.' :
+                         gmTone === 'horror' ? 'Стиль: Лавкрафтовский ужас. Напряжение, безумие, необъяснимые явления, постоянное чувство опасности.' :
+                         gmTone === 'epic' ? 'Стиль: Эпическая сага. Героические поступки, пафос, великие свершения, магия повсюду.' :
+                         'Стиль: Классическое фэнтези. Сбалансированное приключение с юмором и опасностями.';
+
+      const difficultyPrompt = difficulty === 'hardcore' ? 'Сложность: ХАРДКОР. ИИ должен быть максимально суров, ошибки игроков ведут к фатальным последствиям.' :
+                               difficulty === 'hard' ? 'Сложность: ВЫСОКАЯ. Игроки должны чувствовать вызов, ресурсы ограничены.' :
+                               'Сложность: НОРМАЛЬНАЯ/ЛЕГКАЯ. Сфокусируйся на истории и фане.';
+
+      const modelName = aiModel === 'pro' ? 'gemini-3.1-pro-preview' : 'gemini-3-flash-preview';
+
       const prompt = `
 Ты элитный ИИ-Гейм-мастер для многопользовательской текстовой RPG. Твоя цель - реалистично симулировать мир, управлять NPC и реагировать на действия игроков.
 ОТВЕЧАЙ СТРОГО НА РУССКОМ ЯЗЫКЕ.
+
+[НАСТРОЙКИ СЕССИИ]
+${tonePrompt}
+${difficultyPrompt}
 
 [КОНТЕКСТ МИРА]
 Текущее состояние мира и экономики: ${worldState || 'Начало игры. Экономика стабильна.'}
@@ -224,6 +291,7 @@ ${actionsText}
 `;
 
       const response = await generateWithFallback(prompt, {
+        model: modelName,
         thinkingConfig: { thinkingLevel: ThinkingLevel.HIGH },
         responseMimeType: "application/json",
         responseSchema: {
