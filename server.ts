@@ -52,7 +52,8 @@ async function generateWithFallback(prompt: string, baseConfig: any, models: str
       console.log(`[AI] Attempting generation with model: ${model}`);
       const config = { ...baseConfig };
       
-      // Remove thinkingConfig for lite model as it defaults to MINIMAL and might reject HIGH
+      // ThinkingLevel is only for Gemini 3 series. 
+      // Lite defaults to MINIMAL, Pro/Flash support HIGH/LOW.
       if (model === "gemini-3.1-flash-lite-preview" && config.thinkingConfig) {
         delete config.thinkingConfig;
       }
@@ -68,6 +69,8 @@ async function generateWithFallback(prompt: string, baseConfig: any, models: str
     } catch (error: any) {
       console.warn(`[AI] Model ${model} failed: ${error.message || error}`);
       lastError = error;
+      // If it's an API key error, don't bother with other models
+      if (error.message?.includes("API key not valid")) throw error;
     }
   }
 
@@ -184,7 +187,7 @@ ${actionsText}
 
       const response = await generateWithFallback(prompt, {
         thinkingConfig: { thinkingLevel: ThinkingLevel.HIGH }
-      }, ["gemini-3-flash-preview", "gemini-3.1-pro-preview"]);
+      }, ["gemini-3-flash-preview", "gemini-3.1-flash-lite-preview"]);
 
       res.json({ text: response.text });
     } catch (error) {
