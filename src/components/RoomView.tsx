@@ -11,15 +11,17 @@ import ChatArea from '@/src/components/room/ChatArea';
 import ActionInput from '@/src/components/room/ActionInput';
 import InventoryTab from '@/src/components/room/InventoryTab';
 import StateTab from '@/src/components/room/StateTab';
+import QuestTab from '@/src/components/QuestTab';
 import DiceOverlay from '@/src/components/room/DiceOverlay';
 
 interface RoomViewProps {
   roomId: string;
   onLeave: () => void;
+  onMinimize: () => void;
   onOpenBestiary: () => void;
 }
 
-type Tab = 'inventory' | 'chat' | 'state';
+type Tab = 'inventory' | 'chat' | 'state' | 'quests';
 
 const COMMANDS = [
   { cmd: '/roll', desc: 'Бросить кубик d20' },
@@ -29,7 +31,7 @@ const COMMANDS = [
   { cmd: '/eat', desc: 'Съесть/выпить: /eat [предмет]' },
 ];
 
-export default function RoomView({ roomId, onLeave, onOpenBestiary }: RoomViewProps) {
+export default function RoomView({ roomId, onLeave, onMinimize, onOpenBestiary }: RoomViewProps) {
   const [room, setRoom] = useState<Room | null>(null);
   const [players, setPlayers] = useState<Player[]>([]);
   const [messages, setMessages] = useState<Message[]>([]);
@@ -92,7 +94,8 @@ export default function RoomView({ roomId, onLeave, onOpenBestiary }: RoomViewPr
           },
           body: JSON.stringify({
             currentSummary: room.storySummary || "",
-            recentMessages
+            recentMessages,
+            roomId
           })
         });
 
@@ -204,7 +207,7 @@ export default function RoomView({ roomId, onLeave, onOpenBestiary }: RoomViewPr
           'Content-Type': 'application/json',
           'Authorization': `Bearer ${token}`
         },
-        body: JSON.stringify({ characterName, characterProfile })
+        body: JSON.stringify({ characterName, characterProfile, roomId: (room && room.status === 'playing') ? roomId : undefined })
       });
       
       if (!response.ok) throw new Error('Failed to generate character');
@@ -225,16 +228,6 @@ export default function RoomView({ roomId, onLeave, onOpenBestiary }: RoomViewPr
         isReady: false,
         joinedAt: serverTimestamp()
       });
-
-      if (room && room.status === 'playing') {
-        const msgRef = doc(collection(db, 'rooms', roomId, 'messages'));
-        await setDoc(msgRef, {
-          role: 'system',
-          content: `Игрок **${characterName.trim()}** присоединился к игре!`,
-          turn: room.turn,
-          createdAt: serverTimestamp()
-        });
-      }
     } catch (error) {
       console.error("Error joining room", error);
     } finally {
@@ -372,7 +365,8 @@ export default function RoomView({ roomId, onLeave, onOpenBestiary }: RoomViewPr
           playersContext,
           recentMessages,
           turn: room.turn,
-          actionsText
+          actionsText,
+          currentQuests: room.quests || []
         })
       });
 
@@ -382,23 +376,10 @@ export default function RoomView({ roomId, onLeave, onOpenBestiary }: RoomViewPr
       }
 
       const data = await response.json();
-      let aiText = data.text;
-      let stateUpdates = null;
-      let bestiaryEntries = null;
-
-      // Extract JSON block if present
-      const jsonMatch = aiText.match(/```json\s*([\s\S]*?)\s*```/);
-      if (jsonMatch) {
-        try {
-          const jsonContent = JSON.parse(jsonMatch[1]);
-          stateUpdates = jsonContent.stateUpdates;
-          bestiaryEntries = jsonContent.bestiary;
-          // Remove JSON block from the text shown to players
-          aiText = aiText.replace(/```json\s*[\s\S]*?\s*```/, '').trim();
-        } catch (e) {
-          console.error("Failed to parse AI state updates:", e);
-        }
-      }
+      const aiText = data.story;
+      const stateUpdates = data.stateUpdates;
+      const bestiaryEntries = data.bestiary;
+      const updatedQuests = data.quests;
 
       // 1. Add AI message
       const msgRef = doc(collection(db, 'rooms', roomId, 'messages'));
@@ -438,7 +419,7 @@ export default function RoomView({ roomId, onLeave, onOpenBestiary }: RoomViewPr
         }
       }
 
-      // 4. Reset player readiness and increment turn
+      // 4. Reset player readiness and update room
       for (const p of players) {
         const playerRef = doc(db, 'rooms', roomId, 'players', p.uid);
         await updateDoc(playerRef, {
@@ -450,7 +431,8 @@ export default function RoomView({ roomId, onLeave, onOpenBestiary }: RoomViewPr
 
       await updateDoc(doc(db, 'rooms', roomId), {
         turn: room.turn + 1,
-        isGenerating: false
+        isGenerating: false,
+        quests: updatedQuests || room.quests || []
       });
 
     } catch (error: any) {
@@ -542,7 +524,13 @@ export default function RoomView({ roomId, onLeave, onOpenBestiary }: RoomViewPr
             isSpectator={isSpectator} 
             onExportLog={exportLog} 
             onKickPlayer={kickPlayer} 
+            turn={room.turn}
+            storySummary={room.storySummary || ''}
           />
+        )}
+
+        {activeTab === 'quests' && (
+          <QuestTab quests={room.quests || []} />
         )}
 
         {activeTab === 'chat' && (
@@ -652,23 +640,34 @@ export default function RoomView({ roomId, onLeave, onOpenBestiary }: RoomViewPr
         <button
           onClick={() => setActiveTab('chat')}
           className={cn(
-            "flex flex-col items-center justify-center p-2 w-20 rounded-lg transition-colors",
+            "flex flex-col items-center justify-center p-2 w-16 rounded-lg transition-colors",
             activeTab === 'chat' ? "text-orange-500" : "text-neutral-500 hover:text-neutral-300"
           )}
         >
           <MessageSquare size={20} className="mb-1" />
           <span className="text-[10px] font-medium">Чат</span>
         </button>
+
+        <button
+          onClick={() => setActiveTab('quests')}
+          className={cn(
+            "flex flex-col items-center justify-center p-2 w-16 rounded-lg transition-colors",
+            activeTab === 'quests' ? "text-orange-500" : "text-neutral-500 hover:text-neutral-300"
+          )}
+        >
+          <Sparkles size={20} className="mb-1" />
+          <span className="text-[10px] font-medium">Квесты</span>
+        </button>
         
         <button
           onClick={() => setActiveTab('state')}
           className={cn(
-            "flex flex-col items-center justify-center p-2 w-20 rounded-lg transition-colors",
+            "flex flex-col items-center justify-center p-2 w-16 rounded-lg transition-colors",
             activeTab === 'state' ? "text-orange-500" : "text-neutral-500 hover:text-neutral-300"
           )}
         >
-          <Sparkles size={20} className="mb-1" />
-          <span className="text-[10px] font-medium">Состояние</span>
+          <Users size={20} className="mb-1" />
+          <span className="text-[10px] font-medium">Мир</span>
         </button>
       </div>
     </div>

@@ -49,6 +49,17 @@ export default function ChatArea({
       className="flex-1 overflow-y-auto p-4 space-y-6 scroll-smooth"
     >
       {messages.map(msg => {
+        if (msg.role === 'system') {
+          return (
+            <div key={msg.id} className="flex justify-center my-2">
+              <div className="bg-orange-500/10 border border-orange-500/20 rounded-full px-4 py-1.5 text-[11px] font-medium text-orange-200/70 flex items-center gap-2 tracking-wide uppercase">
+                <span className="w-1 h-1 rounded-full bg-orange-500 animate-pulse" />
+                {msg.content}
+              </div>
+            </div>
+          );
+        }
+
         if (msg.role === 'player') {
           const isMine = msg.playerUid === currentUser?.uid;
           
@@ -81,18 +92,16 @@ export default function ChatArea({
         
         return (
           <div key={msg.id} className={cn(
-            "rounded-xl p-4 text-sm",
-            msg.role === 'system' ? "bg-orange-900/10 border border-orange-900/30 text-orange-100" :
-            msg.role === 'ai' ? "bg-neutral-900 border border-neutral-800 text-neutral-100" :
+            "rounded-2xl p-5 text-sm shadow-lg",
+            msg.role === 'ai' ? "bg-neutral-900 border border-neutral-800 text-neutral-100 leading-relaxed font-serif" :
             "bg-neutral-900/50 border border-neutral-800/50 text-neutral-300"
           )}>
-            <div className="text-xs font-semibold uppercase tracking-wider mb-2 flex items-center gap-2 text-neutral-500">
-              {msg.role === 'system' ? 'Гейм-мастер (Система)' : 
-               msg.role === 'ai' ? 'Гейм-мастер (ИИ)' : 'Действия игроков'}
+            <div className="text-[10px] font-bold uppercase tracking-[0.2em] mb-3 flex items-center gap-2 text-neutral-500 border-b border-neutral-800 pb-2">
+              {msg.role === 'ai' ? 'Гейм-мастер' : 'Действия игроков'}
               <span className="text-neutral-700">•</span>
               <span>Ход {msg.turn}</span>
             </div>
-            <div className="markdown-body text-sm leading-relaxed">
+            <div className="markdown-body text-[15px] leading-relaxed prose prose-invert prose-orange max-w-none">
               <Markdown>{msg.content}</Markdown>
             </div>
           </div>

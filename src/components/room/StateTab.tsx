@@ -9,6 +9,8 @@ interface StateTabProps {
   isSpectator: boolean;
   onExportLog: () => void;
   onKickPlayer: (uid: string) => void;
+  turn: number;
+  storySummary: string;
 }
 
 export default function StateTab({
@@ -17,7 +19,9 @@ export default function StateTab({
   isHost,
   isSpectator,
   onExportLog,
-  onKickPlayer
+  onKickPlayer,
+  turn,
+  storySummary
 }: StateTabProps) {
   return (
     <div className="flex-1 overflow-y-auto p-4 space-y-6">
@@ -32,6 +36,18 @@ export default function StateTab({
         )}
       </h2>
       
+      <div className="bg-neutral-900/50 border border-neutral-800 rounded-xl p-4 space-y-2">
+        <div className="flex justify-between items-center mb-2">
+          <span className="text-xs font-bold uppercase tracking-widest text-neutral-500">Текущий ход</span>
+          <span className="text-orange-500 font-mono font-bold text-lg">{turn}</span>
+        </div>
+        {storySummary && (
+          <div className="text-xs text-neutral-400 italic leading-relaxed border-t border-neutral-800 pt-2">
+            {storySummary}
+          </div>
+        )}
+      </div>
+
       {isSpectator ? (
         <div className="space-y-4">
           <p className="text-neutral-500 text-sm mb-4">Вы наблюдатель. Состояние игроков:</p>
@@ -82,6 +98,33 @@ export default function StateTab({
                 ))}
               </ul>
             )}
+          </div>
+
+          <div className="pt-6 border-t border-neutral-800">
+            <h3 className="text-sm font-medium text-neutral-400 mb-3 uppercase tracking-wider">Другие игроки</h3>
+            <div className="space-y-3">
+              {players.filter(p => p.uid !== me?.uid).map(p => (
+                <div key={p.uid} className="bg-neutral-900/30 border border-neutral-800/50 p-3 rounded-lg flex items-center justify-between">
+                  <div className="flex flex-col gap-1">
+                    <span className="text-sm font-medium text-neutral-200">{p.name}</span>
+                    <div className="flex gap-2 text-[10px] text-neutral-500">
+                      <span className="text-red-400/70">HP: {p.hp}/{p.maxHp}</span>
+                      <span className="text-blue-400/70">MP: {p.mana}/{p.maxMana}</span>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    {p.isReady ? (
+                      <span className="text-[10px] bg-green-500/10 text-green-400 px-2 py-0.5 rounded border border-green-500/20">Готов</span>
+                    ) : (
+                      <span className="text-[10px] bg-neutral-800 text-neutral-500 px-2 py-0.5 rounded">Думает...</span>
+                    )}
+                  </div>
+                </div>
+              ))}
+              {players.filter(p => p.uid !== me?.uid).length === 0 && (
+                <p className="text-neutral-600 text-xs italic">Вы единственный игрок в этой сессии.</p>
+              )}
+            </div>
           </div>
         </>
       )}

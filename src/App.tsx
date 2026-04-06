@@ -5,7 +5,7 @@
 
 import { useEffect, useState } from 'react';
 import { onAuthStateChanged, User } from 'firebase/auth';
-import { doc, onSnapshot, setDoc, deleteDoc } from 'firebase/firestore';
+import { doc, onSnapshot, setDoc, deleteDoc, getDoc } from 'firebase/firestore';
 import { auth, db, signInWithGoogle, logout } from './firebase';
 import Lobby from '@/src/components/Lobby';
 import RoomView from '@/src/components/RoomView';
@@ -64,16 +64,31 @@ export default function App() {
     return () => unsubscribe();
   }, [user]);
 
+  const handleMinimizeRoom = async () => {
+    if (!user) return;
+    await setDoc(doc(db, 'users', user.uid), { currentRoomId: null }, { merge: true });
+    setCurrentRoomId(null);
+    setActiveView('main');
+  };
+
   const handleLeaveRoom = async () => {
     if (!user) return;
     if (currentRoomId) {
+      if (!window.confirm("Вы уверены, что хотите полностью покинуть эту игру? Ваш персонаж останется в истории, но вы больше не будете активным участником.")) return;
       try {
         await deleteDoc(doc(db, 'rooms', currentRoomId, 'players', user.uid));
       } catch (e) {
         console.error("Failed to delete player from room:", e);
       }
     }
-    await setDoc(doc(db, 'users', user.uid), { currentRoomId: null }, { merge: true });
+    
+    // Remove from activeRoomIds
+    const userRef = doc(db, 'users', user.uid);
+    const userSnap = await getDoc(userRef);
+    const userData = userSnap.data();
+    const activeRoomIds = (userData?.activeRoomIds || []).filter((id: string) => id !== currentRoomId);
+    
+    await setDoc(userRef, { currentRoomId: null, activeRoomIds }, { merge: true });
     setCurrentRoomId(null);
     setActiveView('main');
   };
@@ -140,13 +155,22 @@ export default function App() {
         <div className="flex items-center gap-3">
           <span className="text-xs text-neutral-400 truncate max-w-[80px]">{user.displayName}</span>
           {currentRoomId && (
-            <button
-              onClick={handleLeaveRoom}
-              className="p-2 text-neutral-400 hover:text-red-500 transition-colors rounded-full hover:bg-neutral-900"
-              title="Покинуть комнату"
-            >
-              <DoorOpen size={16} />
-            </button>
+            <>
+              <button
+                onClick={handleMinimizeRoom}
+                className="p-2 text-neutral-400 hover:text-orange-500 transition-colors rounded-full hover:bg-neutral-900"
+                title="Свернуть игру"
+              >
+                <Home size={16} />
+              </button>
+              <button
+                onClick={handleLeaveRoom}
+                className="p-2 text-neutral-400 hover:text-red-500 transition-colors rounded-full hover:bg-neutral-900"
+                title="Покинут игру навсегда"
+              >
+                <DoorOpen size={16} />
+              </button>
+            </>
           )}
           <button
             onClick={logout}
@@ -165,6 +189,7 @@ export default function App() {
           <RoomView 
             roomId={currentRoomId} 
             onLeave={handleLeaveRoom} 
+            onMinimize={handleMinimizeRoom}
             onOpenBestiary={() => setActiveView('bestiary')} 
           />
         ) : (

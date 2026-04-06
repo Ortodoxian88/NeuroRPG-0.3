@@ -30,6 +30,23 @@ export default function DiceOverlay({ showDiceRoll }: DiceOverlayProps) {
             transition={{ delay: 0.3 }}
             className="text-center"
           >
+            {showDiceRoll.value === 20 && (
+              <motion.div 
+                initial={{ scale: 0.8 }}
+                animate={{ scale: 1.1 }}
+                transition={{ repeat: Infinity, repeatType: "reverse", duration: 0.5 }}
+                className="text-yellow-400 font-black text-xl mb-2 uppercase tracking-widest drop-shadow-[0_0_10px_rgba(250,204,21,0.5)]"
+              >
+                Критический успех!
+              </motion.div>
+            )}
+            {showDiceRoll.value === 1 && (
+              <motion.div 
+                className="text-red-500 font-black text-xl mb-2 uppercase tracking-widest drop-shadow-[0_0_10px_rgba(239,68,68,0.5)]"
+              >
+                Критический провал!
+              </motion.div>
+            )}
             <h3 className="text-2xl font-bold text-white mb-1 font-display">{showDiceRoll.player}</h3>
             <p className="text-orange-400 text-lg">бросает кубик (d20)</p>
           </motion.div>

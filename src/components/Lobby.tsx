@@ -1,16 +1,61 @@
-import React, { useState } from 'react';
-import { doc, setDoc, getDoc, serverTimestamp } from 'firebase/firestore';
+import React, { useState, useEffect } from 'react';
+import { doc, setDoc, getDoc, serverTimestamp, collection, query, where, onSnapshot, updateDoc } from 'firebase/firestore';
 import { db, auth } from '../firebase';
-import { Plus, LogIn, BookOpen } from 'lucide-react';
+import { Plus, LogIn, BookOpen, PlayCircle, Shield } from 'lucide-react';
 
 interface LobbyProps {
   onOpenBestiary: () => void;
+}
+
+interface ActiveRoom {
+  id: string;
+  scenario: string;
+  hostId: string;
+  status: string;
 }
 
 export default function Lobby({ onOpenBestiary }: LobbyProps) {
   const [joinCode, setJoinCode] = useState('');
   const [scenario, setScenario] = useState('Вы очнулись в темной, сырой пещере. Вы не помните, как сюда попали. Вдалеке мерцает тусклый свет.');
   const [isCreating, setIsCreating] = useState(false);
+  const [activeRooms, setActiveRooms] = useState<ActiveRoom[]>([]);
+  const [loadingRooms, setLoadingRooms] = useState(true);
+
+  useEffect(() => {
+    if (!auth.currentUser) return;
+    
+    const userRef = doc(db, 'users', auth.currentUser.uid);
+    const unsubUser = onSnapshot(userRef, async (docSnap) => {
+      if (docSnap.exists()) {
+        const userData = docSnap.data();
+        const roomIds = userData.activeRoomIds || [];
+        
+        // Also include rooms where user is host (just in case they aren't in the list)
+        const hostQuery = query(collection(db, 'rooms'), where('hostId', '==', auth.currentUser.uid));
+        const hostSnap = await getDoc(hostQuery as any); // Simplified for now, better to listen
+        
+        // For simplicity, let's just listen to the specific rooms in the list
+        if (roomIds.length > 0) {
+          const roomsQuery = query(collection(db, 'rooms'), where('__name__', 'in', roomIds.slice(0, 10)));
+          onSnapshot(roomsQuery, (snapshot) => {
+            const rooms = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as ActiveRoom));
+            setActiveRooms(rooms);
+            setLoadingRooms(false);
+          });
+        } else {
+          setActiveRooms([]);
+          setLoadingRooms(false);
+        }
+      }
+    });
+
+    return () => unsubUser();
+  }, []);
+
+  const handleSwitchRoom = async (roomId: string) => {
+    if (!auth.currentUser) return;
+    await setDoc(doc(db, 'users', auth.currentUser.uid), { currentRoomId: roomId }, { merge: true });
+  };
 
   const handleCreateRoom = async () => {
     if (!auth.currentUser) return;
@@ -28,8 +73,19 @@ export default function Lobby({ onOpenBestiary }: LobbyProps) {
         createdAt: serverTimestamp()
       });
       
-      // Update user profile to persist session
-      await setDoc(doc(db, 'users', auth.currentUser.uid), { currentRoomId: roomId }, { merge: true });
+      // Update user profile to persist session and add to active rooms
+      const userRef = doc(db, 'users', auth.currentUser.uid);
+      const userSnap = await getDoc(userRef);
+      const userData = userSnap.data();
+      const activeRoomIds = userData?.activeRoomIds || [];
+      if (!activeRoomIds.includes(roomId)) {
+        activeRoomIds.push(roomId);
+      }
+      
+      await updateDoc(userRef, { 
+        currentRoomId: roomId,
+        activeRoomIds: activeRoomIds
+      });
     } catch (error) {
       console.error("Error creating room", error);
       alert("Не удалось создать комнату.");
@@ -50,8 +106,18 @@ export default function Lobby({ onOpenBestiary }: LobbyProps) {
           return;
         }
         // First reset, then set to ensure a fresh state if already in a room
-        await setDoc(doc(db, 'users', auth.currentUser.uid), { currentRoomId: null }, { merge: true });
-        await setDoc(doc(db, 'users', auth.currentUser.uid), { currentRoomId: roomId }, { merge: true });
+        const userRef = doc(db, 'users', auth.currentUser.uid);
+        const userSnap = await getDoc(userRef);
+        const userData = userSnap.data();
+        const activeRoomIds = userData?.activeRoomIds || [];
+        if (!activeRoomIds.includes(roomId)) {
+          activeRoomIds.push(roomId);
+        }
+        
+        await updateDoc(userRef, { 
+          currentRoomId: roomId,
+          activeRoomIds: activeRoomIds
+        });
       } catch (error) {
         console.error("Error joining room", error);
         alert("Произошла ошибка при попытке войти в комнату.");
@@ -60,8 +126,45 @@ export default function Lobby({ onOpenBestiary }: LobbyProps) {
   };
 
   return (
-    <div className="flex-1 flex flex-col items-center justify-center p-4 overflow-y-auto">
+    <div className="flex-1 flex flex-col items-center p-4 overflow-y-auto">
       <div className="w-full space-y-8 pb-8">
+        
+        {/* Active Sessions Section */}
+        {activeRooms.length > 0 && (
+          <div className="w-full space-y-4">
+            <h2 className="text-lg font-bold text-white flex items-center gap-2 font-display">
+              <PlayCircle size={20} className="text-orange-500" />
+              Ваши активные сессии
+            </h2>
+            <div className="grid gap-3">
+              {activeRooms.map(room => (
+                <button
+                  key={room.id}
+                  onClick={() => handleSwitchRoom(room.id)}
+                  className="w-full bg-neutral-900 border border-neutral-800 hover:border-orange-500/50 p-4 rounded-xl text-left transition-all group"
+                >
+                  <div className="flex justify-between items-start mb-2">
+                    <span className="font-mono text-xs text-orange-500 bg-orange-500/10 px-2 py-0.5 rounded">
+                      {room.id}
+                    </span>
+                    {room.hostId === auth.currentUser?.uid && (
+                      <span className="text-[10px] bg-blue-500/20 text-blue-400 px-1.5 py-0.5 rounded flex items-center gap-1">
+                        <Shield size={10} /> ГМ
+                      </span>
+                    )}
+                  </div>
+                  <p className="text-sm text-neutral-300 line-clamp-2 italic">
+                    "{room.scenario}"
+                  </p>
+                  <div className="mt-3 flex items-center justify-between text-[10px] text-neutral-500">
+                    <span>Статус: {room.status === 'lobby' ? 'В лобби' : 'В игре'}</span>
+                    <span className="text-orange-500 opacity-0 group-hover:opacity-100 transition-opacity">Вернуться →</span>
+                  </div>
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
         
         <div className="bg-neutral-900 border border-neutral-800 rounded-xl p-6 space-y-6">
           <div>
