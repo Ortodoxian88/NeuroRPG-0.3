@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { doc, setDoc, getDoc, serverTimestamp, collection, query, where, onSnapshot, updateDoc } from 'firebase/firestore';
+import { doc, setDoc, getDoc, getDocs, serverTimestamp, collection, query, where, onSnapshot, updateDoc, documentId } from 'firebase/firestore';
 import { db, auth } from '../firebase';
 import { Plus, LogIn, BookOpen, PlayCircle, Shield } from 'lucide-react';
 
@@ -32,11 +32,14 @@ export default function Lobby({ onOpenBestiary }: LobbyProps) {
         
         // Also include rooms where user is host (just in case they aren't in the list)
         const hostQuery = query(collection(db, 'rooms'), where('hostId', '==', auth.currentUser.uid));
-        const hostSnap = await getDoc(hostQuery as any); // Simplified for now, better to listen
+        const hostSnap = await getDocs(hostQuery);
+        
+        const hostRoomIds = hostSnap.docs.map(d => d.id);
+        const allRoomIds = Array.from(new Set([...roomIds, ...hostRoomIds]));
         
         // For simplicity, let's just listen to the specific rooms in the list
-        if (roomIds.length > 0) {
-          const roomsQuery = query(collection(db, 'rooms'), where('__name__', 'in', roomIds.slice(0, 10)));
+        if (allRoomIds.length > 0) {
+          const roomsQuery = query(collection(db, 'rooms'), where(documentId(), 'in', allRoomIds.slice(0, 10)));
           onSnapshot(roomsQuery, (snapshot) => {
             const rooms = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as ActiveRoom));
             setActiveRooms(rooms);
