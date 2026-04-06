@@ -7,9 +7,9 @@ import { useEffect, useState } from 'react';
 import { onAuthStateChanged, User } from 'firebase/auth';
 import { doc, onSnapshot, setDoc, deleteDoc } from 'firebase/firestore';
 import { auth, db, signInWithGoogle, logout } from './firebase';
-import Lobby from './components/Lobby.tsx';
-import RoomView from './components/RoomView.tsx';
-import BestiaryView from './components/BestiaryView.tsx';
+import Lobby from '@/src/components/Lobby';
+import RoomView from '@/src/components/RoomView';
+import BestiaryView from '@/src/components/BestiaryView';
 import { LogOut, BookOpen, Home, DoorOpen } from 'lucide-react';
 import { UserProfile } from './types';
 
