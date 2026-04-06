@@ -116,17 +116,29 @@ async function startServer() {
       return res.status(500).json({ error: 'Reporting service unavailable' });
     }
 
-    const text = `
-🚀 *New NeuroRPG Report*
--------------------------
-*Type:* ${type}
-*User:* ${userEmail}
-*Room:* ${roomId || 'N/A'}
-*Turn:* ${turn || 0}
-*Version:* ${version || '0.2.9'}
+    const escapeHtml = (unsafe: string) => {
+      return unsafe
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;")
+        .replace(/"/g, "&quot;")
+        .replace(/'/g, "&#039;");
+    };
 
-*Message:*
-${message}
+    const safeMessage = escapeHtml(message);
+    const safeUser = escapeHtml(userEmail || 'Аноним');
+    const safeType = type.toUpperCase();
+
+    const text = `
+<b>🚀 Новый репорт: ${safeType}</b>
+──────────────────
+<b>От:</b> ${safeUser}
+<b>Комната:</b> ${roomId || 'N/A'}
+<b>Ход:</b> ${turn || 0}
+<b>Версия:</b> ${version || '0.3.0'}
+
+<b>Сообщение:</b>
+<i>${safeMessage}</i>
     `.trim();
 
     try {
@@ -136,7 +148,7 @@ ${message}
         body: JSON.stringify({
           chat_id: chatId,
           text: text,
-          parse_mode: 'Markdown'
+          parse_mode: 'HTML'
         })
       });
 
