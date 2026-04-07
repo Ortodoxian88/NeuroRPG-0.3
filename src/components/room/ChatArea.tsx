@@ -1,5 +1,5 @@
 import React, { useEffect, useRef } from 'react';
-import { Message, ChatSettings, AppSettings } from '@/src/types';
+import { Message, ChatSettings, AppSettings, Player } from '@/src/types';
 import { Loader2 } from 'lucide-react';
 import Markdown from 'react-markdown';
 import { cn } from '@/src/lib/utils';
@@ -16,6 +16,9 @@ interface ChatAreaProps {
   onForceTurn: () => void;
   playersCount: number;
   readyPlayersCount: number;
+  players?: Player[];
+  typedMessageIds: Set<string>;
+  onMessageTyped: (id: string) => void;
   chatSettings?: ChatSettings;
   appSettings?: AppSettings;
 }
@@ -64,6 +67,9 @@ export default function ChatArea({
   onForceTurn,
   playersCount,
   readyPlayersCount,
+  players = [],
+  typedMessageIds,
+  onMessageTyped,
   chatSettings,
   appSettings
 }: ChatAreaProps) {
@@ -355,8 +361,12 @@ export default function ChatArea({
               appSettings?.theme === 'light' ? "prose-neutral" : "prose-invert",
               chatSettings?.autoCapitalize && "first-letter:uppercase"
             )}>
-              {isLast && msg.role === 'ai' && chatSettings?.typewriterSpeed && chatSettings.typewriterSpeed > 0 ? (
-                <TypewriterContent content={msg.content} speed={chatSettings.typewriterSpeed} />
+              {isLast && msg.role === 'ai' && chatSettings?.typewriterSpeed && chatSettings.typewriterSpeed > 0 && !typedMessageIds.has(msg.id) ? (
+                <TypewriterContent 
+                  content={msg.content} 
+                  speed={chatSettings.typewriterSpeed} 
+                  onComplete={() => onMessageTyped(msg.id)}
+                />
               ) : chatSettings?.enableMarkdown === false ? (
                 <div className="whitespace-pre-wrap" dangerouslySetInnerHTML={{ __html: highlightContent(msg.content) }} />
               ) : (
@@ -390,13 +400,28 @@ export default function ChatArea({
       )}
       
       {isHost && !isGenerating && readyPlayersCount > 0 && readyPlayersCount < playersCount && (
-        <div className="flex justify-center py-2">
+        <div className="flex flex-col items-center gap-2 py-2">
+          <div className="flex flex-wrap justify-center gap-2 mb-2">
+            {players.map(p => (
+              <div 
+                key={p.uid} 
+                className={cn(
+                  "px-2 py-1 rounded-md text-[10px] font-bold uppercase tracking-wider border transition-all",
+                  p.isReady 
+                    ? "bg-green-500/20 border-green-500/30 text-green-400" 
+                    : "bg-neutral-500/10 border-neutral-500/20 text-neutral-500"
+                )}
+              >
+                {p.name} {p.isReady ? '✓' : '...'}
+              </div>
+            ))}
+          </div>
           <button 
             onClick={onForceTurn}
-            className="text-xs text-neutral-500 hover:text-orange-400 transition-colors flex items-center gap-1"
+            className="text-xs text-neutral-500 hover:text-orange-400 transition-colors flex items-center gap-1 bg-neutral-900/50 px-3 py-1.5 rounded-full border border-neutral-800"
           >
             <span className="shrink-0">▶️</span>
-            Форсировать ход (не все готовы)
+            Форсировать ход ({readyPlayersCount}/{playersCount} готовы)
           </button>
         </div>
       )}

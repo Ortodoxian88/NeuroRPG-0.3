@@ -2,7 +2,7 @@ import React, { useEffect, useState, useRef } from 'react';
 import { doc, onSnapshot, collection, query, orderBy, setDoc, serverTimestamp, updateDoc, deleteDoc, getDoc } from 'firebase/firestore';
 import { db, auth } from '@/src/firebase';
 import { Room, Player, Message, AppSettings, ChatSettings } from '@/src/types';
-import { Users, Play, Loader2, Backpack, MessageSquare, Sparkles, X } from 'lucide-react';
+import { Users, Play, Loader2, Backpack, MessageSquare, Sparkles, X, CheckCircle2 } from 'lucide-react';
 import { cn } from '@/src/lib/utils';
 import { typingIndicators } from '@/src/lib/indicators';
 
@@ -54,6 +54,7 @@ export default function RoomView({ roomId, onLeave, onMinimize, onOpenBestiary, 
   const [showDiceRoll, setShowDiceRoll] = useState<{ player: string, value: number } | null>(null);
   const [typingIndicator, setTypingIndicator] = useState('');
   const [showJoinForm, setShowJoinForm] = useState(false);
+  const [typedMessageIds, setTypedMessageIds] = useState<Set<string>>(new Set());
   
   const generatingTurnRef = useRef<number | null>(null);
   
@@ -398,7 +399,12 @@ export default function RoomView({ roomId, onLeave, onMinimize, onOpenBestiary, 
       }
 
       const data = await response.json();
-      const aiText = data.story || "Гейм-мастер обдумывает следующий шаг...";
+      const aiText = data.story;
+      
+      if (!aiText) {
+        throw new Error("ИИ не смог сгенерировать художественный текст. Попробуйте еще раз или проверьте настройки.");
+      }
+
       const reasoning = data.reasoning;
       const stateUpdates = data.stateUpdates;
       const bestiaryEntries = data.bestiary;
@@ -528,14 +534,19 @@ export default function RoomView({ roomId, onLeave, onMinimize, onOpenBestiary, 
             <button
               type="submit"
               disabled={isJoining || !characterName.trim() || !characterProfile.trim()}
-              className="w-full bg-orange-600 hover:bg-orange-500 text-white font-bold py-4 px-4 rounded-2xl transition-colors disabled:opacity-50 flex items-center justify-center gap-2 text-base"
+              className="w-full bg-orange-600 hover:bg-orange-500 text-white font-bold py-4 px-4 rounded-2xl transition-all disabled:opacity-50 flex items-center justify-center gap-2 text-base active:scale-95 shadow-xl shadow-orange-600/20"
             >
               {isJoining ? (
                 <>
-                  <Loader2 size={20} className="animate-spin" />
-                  ИИ анализирует персонажа...
+                  <Loader2 size={24} className="animate-spin" />
+                  <span>Создание персонажа...</span>
                 </>
-              ) : 'Присоединиться'}
+              ) : (
+                <>
+                  <CheckCircle2 size={24} />
+                  <span>Создать персонажа</span>
+                </>
+              )}
             </button>
           </form>
         </div>
@@ -661,6 +672,9 @@ export default function RoomView({ roomId, onLeave, onMinimize, onOpenBestiary, 
                 onForceTurn={() => { generatingTurnRef.current = room.turn; generateAIResponse(); }}
                 playersCount={players.length}
                 readyPlayersCount={players.filter(p => p.isReady).length}
+                players={players}
+                typedMessageIds={typedMessageIds}
+                onMessageTyped={(id) => setTypedMessageIds(prev => new Set(prev).add(id))}
                 chatSettings={chatSettings}
                 appSettings={appSettings}
               />

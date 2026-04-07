@@ -75,8 +75,13 @@ async function generateWithFallback(prompt: string, baseConfig: any, models: str
         config: config
       });
       
+      if (!response.text) {
+        console.warn(`[AI] Model ${model} returned no text. Finish reason: ${response.candidates?.[0]?.finishReason}`);
+        throw new Error(`AI returned no text. Reason: ${response.candidates?.[0]?.finishReason || 'Unknown'}`);
+      }
+      
       console.log(`[AI] Successfully generated with ${model}`);
-      return response;
+      return response.text;
     } catch (error: any) {
       console.warn(`[AI] Model ${model} failed: ${error.message || error}`);
       lastError = error;
@@ -173,7 +178,7 @@ async function startServer() {
 
 Верни JSON объект с массивами "inventory" и "skills", а также строку "alignment" (например, "Законопослушный-Добрый", "Хаотично-Злой", "Истинно-Нейтральный"). Названия предметов и навыков должны быть на РУССКОМ языке. Будь краток.`;
 
-      const response = await generateWithFallback(prompt, {
+      const text = await generateWithFallback(prompt, {
         responseMimeType: "application/json",
         responseSchema: {
           type: Type.OBJECT,
@@ -186,13 +191,13 @@ async function startServer() {
         }
       });
 
-      let text = response.text || '{"inventory":[], "skills":[], "alignment": "Нейтральное"}';
-      const match = text.match(/```(?:json)?\s*([\s\S]*?)\s*```/i);
+      let jsonText = text;
+      const match = jsonText.match(/```(?:json)?\s*([\s\S]*?)\s*```/i);
       if (match) {
-        text = match[1];
+        jsonText = match[1];
       }
       
-      const parsed = JSON.parse(text);
+      const parsed = JSON.parse(jsonText);
       
       // Also post a system message to the room
       if (roomId) {
@@ -230,11 +235,11 @@ async function startServer() {
 
 Напиши обновленное краткое содержание (не более 3-4 абзацев), сохраняя ключевые события и текущую цель героев. Пиши художественно, но емко.`;
 
-      const response = await generateWithFallback(prompt, {
+      const aiText = await generateWithFallback(prompt, {
         // Use low thinking for summarization to save time if supported
       });
 
-      res.json({ text: response.text });
+      res.json({ text: aiText });
     } catch (error) {
       console.error("Summarize error:", error);
       res.status(500).json({ error: "Failed to summarize" });
@@ -309,7 +314,7 @@ ${actionsText}
 Заканчивай ход интригой или новым вызовом.
 `;
 
-      const response = await generateWithFallback(prompt, {
+      const aiText = await generateWithFallback(prompt, {
         model: modelName,
         thinkingConfig: { thinkingLevel: ThinkingLevel.HIGH },
         responseMimeType: "application/json",
@@ -362,23 +367,23 @@ ${actionsText}
         }
       }, ["gemini-3-flash-preview", "gemini-3.1-flash-lite-preview"]);
 
-      let text = response.text || '{}';
+      let jsonText = aiText;
       
       let parsed;
       try {
-        const match = text.match(/```(?:json)?\s*([\s\S]*?)\s*```/i);
+        const match = jsonText.match(/```(?:json)?\s*([\s\S]*?)\s*```/i);
         if (match) {
-          text = match[1];
+          jsonText = match[1];
         }
-        parsed = JSON.parse(text);
+        parsed = JSON.parse(jsonText);
       } catch (e) {
         console.error("Failed to parse JSON, attempting fallback extraction", e);
         // Fallback: try to find the first { and last }
-        const firstBrace = text.indexOf('{');
-        const lastBrace = text.lastIndexOf('}');
+        const firstBrace = jsonText.indexOf('{');
+        const lastBrace = jsonText.lastIndexOf('}');
         if (firstBrace !== -1 && lastBrace !== -1) {
           try {
-            parsed = JSON.parse(text.substring(firstBrace, lastBrace + 1));
+            parsed = JSON.parse(jsonText.substring(firstBrace, lastBrace + 1));
           } catch (innerError) {
             console.error("Fallback JSON parsing failed", innerError);
             throw new Error("Failed to parse AI response as JSON");

@@ -52,12 +52,15 @@ export default function ActionInput({
         appSettings?.theme === 'light' ? "bg-white border-neutral-200" : "bg-neutral-900 border-neutral-800"
       )}>
         <div className={cn(
-          "border rounded-lg p-3 text-sm flex items-center justify-between",
+          "border rounded-2xl p-4 text-sm flex items-center justify-between",
           appSettings?.theme === 'light' ? "bg-neutral-50 border-neutral-200" : "bg-neutral-800 border-neutral-700"
         )}>
           <div className="flex items-center gap-3 text-neutral-400 overflow-hidden">
-            <Loader2 size={16} className="animate-spin shrink-0" />
-            <span className="truncate">{me.action}</span>
+            <div className="w-2 h-2 rounded-full bg-green-500 animate-pulse shrink-0" />
+            <span className="truncate italic">Вы готовы. Ожидание других игроков...</span>
+          </div>
+          <div className="text-[10px] font-bold uppercase tracking-widest text-neutral-500 bg-neutral-900/50 px-2 py-1 rounded border border-neutral-700">
+            {me.action.length > 20 ? me.action.substring(0, 20) + '...' : me.action}
           </div>
         </div>
       </div>
@@ -121,9 +124,13 @@ export default function ActionInput({
         <button
           type="submit"
           disabled={!actionInput.trim() || isSubmittingAction || isGenerating}
-          className="w-14 h-14 shrink-0 flex items-center justify-center bg-orange-600 hover:bg-orange-500 text-white rounded-full transition-colors disabled:opacity-50 disabled:cursor-not-allowed shadow-lg shadow-orange-600/20"
+          className="w-14 h-14 shrink-0 flex items-center justify-center bg-orange-600 hover:bg-orange-500 text-white rounded-full transition-all active:scale-90 disabled:opacity-50 disabled:cursor-not-allowed shadow-lg shadow-orange-600/20"
         >
-          <Send size={24} />
+          {isSubmittingAction ? (
+            <Loader2 size={24} className="animate-spin" />
+          ) : (
+            <Send size={24} />
+          )}
         </button>
       </form>
     </div>
