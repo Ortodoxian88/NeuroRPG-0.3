@@ -1,9 +1,9 @@
 import { Request, Response, NextFunction } from 'express';
-import * as admin from 'firebase-admin';
+import admin from 'firebase-admin';
 import { usersRepository } from '../database/repositories/users.repository';
 
 // Инициализация один раз
-if (!admin.apps.length) {
+if (!admin || !admin.apps || admin.apps.length === 0) {
   try {
     // Поддерживаем обычный JSON и Base64 (для Render)
     const rawJson = process.env.FIREBASE_SERVICE_ACCOUNT_JSON;
