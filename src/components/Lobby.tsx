@@ -1,25 +1,28 @@
 import React, { useState, useEffect } from 'react';
-import { doc, setDoc, getDoc, getDocs, serverTimestamp, collection, query, where, onSnapshot, updateDoc, documentId } from 'firebase/firestore';
-import { db, auth } from '../firebase';
+import { auth } from '../firebase';
 import { AppSettings } from '../types';
 import { cn } from '../lib/utils';
-import { Plus, LogIn, BookOpen, PlayCircle, Shield, Bug, Settings, LogOut } from 'lucide-react';
+import { Plus, LogIn, BookOpen, PlayCircle, Shield, Bug, Settings, LogOut, Loader2 } from 'lucide-react';
+import { api } from '../services/api';
 
 interface LobbyProps {
   onOpenBestiary: () => void;
   onOpenSettings: () => void;
   onOpenReport: () => void;
   appSettings: AppSettings;
+  onRoomSelected: (roomId: string) => void;
 }
 
 interface ActiveRoom {
   id: string;
-  scenario: string;
-  hostId: string;
+  scenario?: string;
+  world_settings?: any;
+  host_user_id: string;
   status: string;
+  join_code: string;
 }
 
-export default function Lobby({ onOpenBestiary, onOpenSettings, onOpenReport, appSettings }: LobbyProps) {
+export default function Lobby({ onOpenBestiary, onOpenSettings, onOpenReport, appSettings, onRoomSelected }: LobbyProps) {
   const [joinCode, setJoinCode] = useState('');
   const [scenario, setScenario] = useState('Вы очнулись в темной, сырой пещере. Вы не помните, как сюда попали. Вдалеке мерцает тусклый свет.');
   const [isCreating, setIsCreating] = useState(false);
@@ -33,71 +36,30 @@ export default function Lobby({ onOpenBestiary, onOpenSettings, onOpenReport, ap
   useEffect(() => {
     if (!auth.currentUser) return;
     
-    const userRef = doc(db, 'users', auth.currentUser.uid);
-    const unsubUser = onSnapshot(userRef, async (docSnap) => {
-      if (docSnap.exists()) {
-        const userData = docSnap.data();
-        const roomIds = userData.activeRoomIds || [];
-        
-        // Also include rooms where user is host (just in case they aren't in the list)
-        const hostQuery = query(collection(db, 'rooms'), where('hostId', '==', auth.currentUser.uid));
-        const hostSnap = await getDocs(hostQuery);
-        
-        const hostRoomIds = hostSnap.docs.map(d => d.id);
-        const allRoomIds = Array.from(new Set([...roomIds, ...hostRoomIds]));
-        
-        // For simplicity, let's just listen to the specific rooms in the list
-        if (allRoomIds.length > 0) {
-          const roomsQuery = query(collection(db, 'rooms'), where(documentId(), 'in', allRoomIds.slice(0, 10)));
-          onSnapshot(roomsQuery, (snapshot) => {
-            const rooms = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as ActiveRoom));
-            setActiveRooms(rooms);
-            setLoadingRooms(false);
-          });
-        } else {
-          setActiveRooms([]);
-          setLoadingRooms(false);
-        }
+    const loadRooms = async () => {
+      try {
+        const rooms = await api.getRooms();
+        setActiveRooms(rooms);
+      } catch (error) {
+        console.error('Failed to load rooms:', error);
+      } finally {
+        setLoadingRooms(false);
       }
-    });
+    };
 
-    return () => unsubUser();
+    loadRooms();
   }, []);
 
   const handleSwitchRoom = async (roomId: string) => {
-    if (!auth.currentUser) return;
-    await setDoc(doc(db, 'users', auth.currentUser.uid), { currentRoomId: roomId }, { merge: true });
+    onRoomSelected(roomId);
   };
 
   const handleCreateRoom = async () => {
     if (!auth.currentUser) return;
     setIsCreating(true);
     try {
-      const roomId = Math.random().toString(36).substring(2, 8).toUpperCase();
-      const roomRef = doc(db, 'rooms', roomId);
-      
-      await setDoc(roomRef, {
-        hostId: auth.currentUser.uid,
-        scenario: scenario,
-        turn: 0,
-        status: 'lobby',
-        quests: [],
-        createdAt: serverTimestamp()
-      });
-      
-      // Update user profile to persist session and add to active rooms
-      const userRef = doc(db, 'users', auth.currentUser.uid);
-      const userSnap = await getDoc(userRef);
-      const userData = userSnap.data();
-      const activeRoomIds = userData?.activeRoomIds || [];
-      if (!activeRoomIds.includes(roomId)) {
-        activeRoomIds.push(roomId);
-      }
-      
-      await updateDoc(userRef, { 
-        currentRoomId: roomId,
-        activeRoomIds: activeRoomIds
-      });
+      const room = await api.createRoom(scenario);
+      onRoomSelected(room.id);
     } catch (error) {
       console.error("Error creating room", error);
       alert("Не удалось создать комнату.");
@@ -109,27 +71,15 @@ export default function Lobby({ onOpenBestiary, onOpenSettings, onOpenReport, ap
   const handleJoinRoom = async (e: React.FormEvent) => {
     e.preventDefault();
     if (joinCode.trim() && auth.currentUser) {
-      const roomId = joinCode.trim().toUpperCase();
       try {
-        const roomRef = doc(db, 'rooms', roomId);
-        const roomSnap = await getDoc(roomRef);
-        if (!roomSnap.exists()) {
-          alert("Комната с таким кодом не найдена.");
-          return;
-        }
-        // First reset, then set to ensure a fresh state if already in a room
-        const userRef = doc(db, 'users', auth.currentUser.uid);
-        const userSnap = await getDoc(userRef);
-        const userData = userSnap.data();
-        const activeRoomIds = userData?.activeRoomIds || [];
-        if (!activeRoomIds.includes(roomId)) {
-          activeRoomIds.push(roomId);
-        }
-        
-        await updateDoc(userRef, { 
-          currentRoomId: roomId,
-          activeRoomIds: activeRoomIds
-        });
+        // We just navigate to the room view, joining will happen there if needed
+        // But we need to find the room ID by join code first.
+        // For now, we'll just pass the join code to a new state in App.tsx, or we can fetch it here.
+        // Actually, let's just use the join code directly as the room ID in the frontend for now,
+        // and the RoomView will handle the actual joining process.
+        // Wait, the API needs the join code to join.
+        // Let's just pass the join code to App.tsx which will pass it to RoomView.
+        onRoomSelected(joinCode.trim().toUpperCase());
       } catch (error) {
         console.error("Error joining room", error);
         alert("Произошла ошибка при попытке войти в комнату.");

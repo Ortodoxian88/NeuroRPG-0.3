@@ -1,7 +1,6 @@
 import React, { useState } from 'react';
 import { AppSettings, ChatSettings } from '@/src/types';
 import { X, Globe, MessageSquare, Monitor, Type, Palette, Zap, ShieldAlert, Info, Trash2, Bug } from 'lucide-react';
-import { clearFirestoreCache } from '@/src/firebase';
 import { cn } from '@/src/lib/utils';
 
 interface SettingsViewProps {
@@ -187,7 +186,7 @@ export default function SettingsView({
 
               <Section title="Система" icon={<Bug size={18} />} appSettings={appSettings}>
                 <button 
-                  onClick={clearFirestoreCache}
+                  onClick={() => window.location.reload()}
                   className={cn(
                     "w-full flex items-center justify-between p-4 rounded-2xl border transition-colors group",
                     appSettings.theme === 'light' 

@@ -1,11 +1,10 @@
 import React, { useEffect, useState, useMemo } from 'react';
-import { collection, query, orderBy, onSnapshot } from 'firebase/firestore';
-import { db } from '../firebase';
 import { BestiaryEntry, AppSettings } from '../types';
 import { ArrowLeft, BookOpen, Search, Filter, Tag, Info, Feather } from 'lucide-react';
 import { cn } from '../lib/utils';
 import Markdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
+import { api } from '../services/api';
 
 export default function BestiaryView({ onBack, appSettings }: { onBack: () => void, appSettings: AppSettings }) {
   const [entries, setEntries] = useState<BestiaryEntry[]>([]);
@@ -14,10 +13,23 @@ export default function BestiaryView({ onBack, appSettings }: { onBack: () => vo
   const [selectedEntry, setSelectedEntry] = useState<BestiaryEntry | null>(null);
 
   useEffect(() => {
-    const q = query(collection(db, 'bestiary'), orderBy('title', 'asc'));
-    return onSnapshot(q, (snap) => {
-      setEntries(snap.docs.map(d => ({ id: d.id, ...d.data() } as BestiaryEntry)));
-    });
+    const fetchBestiary = async () => {
+      try {
+        const data = await api.getBestiary();
+        setEntries(data.map((d: any) => ({
+          id: d.id,
+          title: d.title,
+          category: d.category,
+          content: d.content,
+          tags: d.tags,
+          nature: d.nature,
+          level: d.knowledge_level
+        })));
+      } catch (error) {
+        console.error("Failed to fetch bestiary", error);
+      }
+    };
+    fetchBestiary();
   }, []);
 
   const categories = useMemo(() => {

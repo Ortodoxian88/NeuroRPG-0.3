@@ -5,8 +5,7 @@
 
 import { useEffect, useState } from 'react';
 import { onAuthStateChanged, User } from 'firebase/auth';
-import { doc, onSnapshot, setDoc, deleteDoc, getDoc } from 'firebase/firestore';
-import { auth, db, signInWithGoogle, logout } from './firebase';
+import { auth, signInWithGoogle, logout } from './firebase';
 import Lobby from '@/src/components/Lobby';
 import RoomView from '@/src/components/RoomView';
 import BestiaryView from '@/src/components/BestiaryView';
@@ -162,40 +161,28 @@ export default function App() {
       if (!currentUser) {
         setLoading(false);
         setProfileLoading(false);
+      } else {
+        const savedRoomId = localStorage.getItem(`currentRoomId_${currentUser.uid}`);
+        if (savedRoomId) {
+          setCurrentRoomId(savedRoomId);
+        }
+        setLoading(false);
+        setProfileLoading(false);
       }
     });
     return () => unsubscribe();
   }, []);
 
-  useEffect(() => {
+  const handleRoomSelected = (roomId: string) => {
     if (!user) return;
-    
-    const userRef = doc(db, 'users', user.uid);
-    const unsubscribe = onSnapshot(userRef, (docSnap) => {
-      if (docSnap.exists()) {
-        const data = docSnap.data() as UserProfile;
-        setCurrentRoomId(data.currentRoomId || null);
-      } else {
-        // Create initial profile
-        setDoc(userRef, { currentRoomId: null }).catch(err => {
-          console.error("Failed to create user profile:", err);
-        });
-      }
-      setLoading(false);
-      setProfileLoading(false);
-    }, (error) => {
-      console.error("Firestore onSnapshot error:", error);
-      // If we get a permission error, we still want to stop loading
-      setLoading(false);
-      setProfileLoading(false);
-    });
-
-    return () => unsubscribe();
-  }, [user]);
+    localStorage.setItem(`currentRoomId_${user.uid}`, roomId);
+    setCurrentRoomId(roomId);
+    setActiveView('main');
+  };
 
   const handleMinimizeRoom = async () => {
     if (!user) return;
-    await setDoc(doc(db, 'users', user.uid), { currentRoomId: null }, { merge: true });
+    localStorage.removeItem(`currentRoomId_${user.uid}`);
     setCurrentRoomId(null);
     setActiveView('main');
   };
@@ -204,20 +191,10 @@ export default function App() {
     if (!user) return;
     if (currentRoomId) {
       if (!window.confirm("Вы уверены, что хотите полностью покинуть эту игру? Ваш персонаж останется в истории, но вы больше не будете активным участником.")) return;
-      try {
-        await deleteDoc(doc(db, 'rooms', currentRoomId, 'players', user.uid));
-      } catch (e) {
-        console.error("Failed to delete player from room:", e);
-      }
+      // We don't delete the player from DB in PostgreSQL, just remove from local state
     }
     
-    // Remove from activeRoomIds
-    const userRef = doc(db, 'users', user.uid);
-    const userSnap = await getDoc(userRef);
-    const userData = userSnap.data();
-    const activeRoomIds = (userData?.activeRoomIds || []).filter((id: string) => id !== currentRoomId);
-    
-    await setDoc(userRef, { currentRoomId: null, activeRoomIds }, { merge: true });
+    localStorage.removeItem(`currentRoomId_${user.uid}`);
     setCurrentRoomId(null);
     setActiveView('main');
   };
@@ -474,6 +451,7 @@ export default function App() {
               onOpenSettings={() => setActiveView('settings')}
               onOpenReport={() => setShowReportModal(true)}
               appSettings={appSettings}
+              onRoomSelected={handleRoomSelected}
             />
           )}
         </main>

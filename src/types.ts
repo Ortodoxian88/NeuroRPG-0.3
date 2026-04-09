@@ -1,5 +1,3 @@
-import { Timestamp } from "firebase/firestore";
-
 export interface UserProfile {
   currentRoomId: string | null;
 }
@@ -18,7 +16,7 @@ export interface Room {
   worldState?: string; // Dynamic compendium/economy state
   factions?: Record<string, string>; // Faction relations and status
   hiddenTimers?: Record<string, number>; // Quest timers (e.g., "Save hostage": 3 turns left)
-  createdAt: Timestamp;
+  createdAt: string | Date;
 }
 
 export interface Player {
@@ -48,7 +46,7 @@ export interface Player {
   action: string;
   isHiddenAction?: boolean;
   isReady: boolean;
-  joinedAt: Timestamp;
+  joinedAt: string | Date;
 }
 
 export interface AppSettings {
@@ -102,7 +100,7 @@ export interface Message {
   playerUid?: string;
   isHidden?: boolean;
   turn: number;
-  createdAt: Timestamp;
+  createdAt: string | Date;
 }
 
 export interface BestiaryEntry {

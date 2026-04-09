@@ -5,12 +5,12 @@ export const playersRepository = {
   async create(player: Omit<RoomPlayerRow, 'id' | 'created_at' | 'updated_at'>): Promise<RoomPlayerRow> {
     const res = await query<RoomPlayerRow>(
       `INSERT INTO room_players 
-       (room_id, user_id, character_name, character_profile, hp, hp_max, mana, mana_max, stress, stress_max, stat_strength, stat_dexterity, stat_constitution, stat_intelligence, stat_wisdom, stat_charisma, inventory, skills, statuses, injuries, current_action, is_ready, is_online, last_active_at)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24) RETURNING *`,
+       (room_id, user_id, character_name, character_profile, hp, hp_max, mana, mana_max, stress, stress_max, stat_strength, stat_dexterity, stat_constitution, stat_intelligence, stat_wisdom, stat_charisma, inventory, skills, statuses, injuries, alignment, mutations, reputation, current_action, is_ready, is_online, last_active_at)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26, $27) RETURNING *`,
       [
         player.room_id, player.user_id, player.character_name, player.character_profile, player.hp, player.hp_max, player.mana, player.mana_max, 
         player.stress, player.stress_max, player.stat_strength, player.stat_dexterity, player.stat_constitution, player.stat_intelligence, player.stat_wisdom, player.stat_charisma, player.inventory, player.skills, player.statuses, 
-        player.injuries, player.current_action, player.is_ready, player.is_online, player.last_active_at
+        player.injuries, player.alignment, player.mutations, player.reputation, player.current_action, player.is_ready, player.is_online, player.last_active_at
       ]
     );
     return res.rows[0];

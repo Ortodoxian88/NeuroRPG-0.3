@@ -37,12 +37,19 @@ if (!admin || !admin.apps || admin.apps.length === 0) {
 
 export async function authMiddleware(req: Request, res: Response, next: NextFunction) {
   try {
+    let token = '';
     const authHeader = req.headers.authorization;
-    if (!authHeader?.startsWith('Bearer ')) {
+    
+    if (authHeader?.startsWith('Bearer ')) {
+      token = authHeader.split('Bearer ')[1];
+    } else if (req.query.token && typeof req.query.token === 'string') {
+      token = req.query.token;
+    }
+
+    if (!token) {
       return res.status(401).json({ error: 'Missing token' });
     }
 
-    const token = authHeader.split('Bearer ')[1];
     const decodedToken = await admin.auth().verifyIdToken(token);
     
     // UPSERT юзера в нашу БД (теперь у нас есть свой UUID юзера)
