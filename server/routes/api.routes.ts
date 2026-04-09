@@ -77,24 +77,23 @@ async function generateWithFallback(prompt: string, baseConfig: any, models: str
   const modelList = baseConfig.model ? [baseConfig.model, ...models.filter(m => m !== baseConfig.model)] : models;
 
   for (const key of keys) {
-    const ai = new GoogleGenAI(key);
+    const ai = new GoogleGenAI({ apiKey: key });
     for (const modelName of modelList) {
       try {
         const config = { ...baseConfig };
         delete config.model;
         if (modelName === "gemini-3.1-flash-lite-preview" && config.thinkingConfig) delete config.thinkingConfig;
 
-        const model = ai.getGenerativeModel({ 
+        const response = await ai.models.generateContent({
           model: modelName,
-          safetySettings 
+          contents: prompt,
+          config: {
+            ...config,
+            safetySettings
+          }
         });
 
-        const result = await model.generateContent({
-          contents: [{ role: 'user', parts: [{ text: prompt }] }],
-          generationConfig: config
-        });
-
-        const text = result.response.text();
+        const text = response.text;
         if (!text) throw new Error(`AI returned no text.`);
         return text;
       } catch (error: any) {

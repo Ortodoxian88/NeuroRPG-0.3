@@ -1,5 +1,5 @@
 import React, { useEffect, useState, useRef } from 'react';
-import { auth } from '@/src/firebase';
+import { supabase } from '@/src/supabase';
 import { Room, Player, Message, AppSettings, ChatSettings } from '@/src/types';
 import { Users, Play, Loader2, Backpack, MessageSquare, Sparkles, X, CheckCircle2 } from 'lucide-react';
 import { cn } from '@/src/lib/utils';
@@ -61,9 +61,16 @@ export default function RoomView({ roomId, onLeave, onMinimize, onOpenBestiary, 
   
   const generatingTurnRef = useRef<number | null>(null);
   
-  const currentUser = auth.currentUser;
-  const isHost = Boolean(currentUser && room?.hostId === currentUser.uid);
-  const me = players.find(p => p.uid === currentUser?.uid);
+  const [currentUser, setCurrentUser] = useState<any>(null);
+
+  useEffect(() => {
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      setCurrentUser(session?.user ?? null);
+    });
+  }, []);
+
+  const isHost = Boolean(currentUser && room?.hostId === currentUser.id);
+  const me = players.find(p => p.uid === currentUser?.id);
   const hasJoined = !!me;
   const isSpectator = !isHost && !me;
 
@@ -357,7 +364,8 @@ export default function RoomView({ roomId, onLeave, onMinimize, onOpenBestiary, 
       // Let's just trigger generateAIResponse which will update the turn.
       // Wait, the host starts the game by sending the scenario.
       // Let's add a small fetch to update room status.
-      const token = await currentUser.getIdToken();
+      const { data: { session } } = await supabase.auth.getSession();
+      const token = session?.access_token;
       await fetch(`/api/rooms/${roomId}/start`, {
         method: 'POST',
         headers: {
@@ -484,7 +492,7 @@ export default function RoomView({ roomId, onLeave, onMinimize, onOpenBestiary, 
       const wikiCandidates = data.wikiCandidates;
       if (wikiCandidates && Array.isArray(wikiCandidates) && wikiCandidates.length > 0) {
         // Don't await this, let it run in the background
-        processWikiCandidates(wikiCandidates, roomId, currentUser?.uid || 'unknown', setArchivistStatus);
+        processWikiCandidates(wikiCandidates, roomId, currentUser?.id || 'unknown', setArchivistStatus);
       }
 
     } catch (error: any) {

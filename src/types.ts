@@ -4,6 +4,7 @@ export interface UserProfile {
 
 export interface Room {
   id: string;
+  joinCode: string;
   hostId: string;
   scenario: string;
   turn: number;

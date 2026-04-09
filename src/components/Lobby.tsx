@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { auth } from '../firebase';
+import { supabase, logout } from '../supabase';
 import { AppSettings } from '../types';
 import { cn } from '../lib/utils';
 import { Plus, LogIn, BookOpen, PlayCircle, Shield, Bug, Settings, LogOut, Loader2 } from 'lucide-react';
@@ -30,13 +30,14 @@ export default function Lobby({ onOpenBestiary, onOpenSettings, onOpenReport, ap
   const [loadingRooms, setLoadingRooms] = useState(true);
 
   const handleLogout = () => {
-    auth.signOut();
+    logout();
   };
 
   useEffect(() => {
-    if (!auth.currentUser) return;
-    
-    const loadRooms = async () => {
+    const checkUser = async () => {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) return;
+      
       try {
         const rooms = await api.getRooms();
         setActiveRooms(rooms);
@@ -47,7 +48,7 @@ export default function Lobby({ onOpenBestiary, onOpenSettings, onOpenReport, ap
       }
     };
 
-    loadRooms();
+    checkUser();
   }, []);
 
   const handleSwitchRoom = async (roomId: string) => {
@@ -55,7 +56,8 @@ export default function Lobby({ onOpenBestiary, onOpenSettings, onOpenReport, ap
   };
 
   const handleCreateRoom = async () => {
-    if (!auth.currentUser) return;
+    const { data: { session } } = await supabase.auth.getSession();
+    if (!session) return;
     setIsCreating(true);
     try {
       const room = await api.createRoom(scenario);
@@ -70,7 +72,8 @@ export default function Lobby({ onOpenBestiary, onOpenSettings, onOpenReport, ap
 
   const handleJoinRoom = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (joinCode.trim() && auth.currentUser) {
+    const { data: { session } } = await supabase.auth.getSession();
+    if (joinCode.trim() && session) {
       try {
         // We just navigate to the room view, joining will happen there if needed
         // But we need to find the room ID by join code first.
@@ -122,11 +125,7 @@ export default function Lobby({ onOpenBestiary, onOpenSettings, onOpenReport, ap
                       <span className="font-mono text-xs text-orange-500 bg-orange-500/10 px-2 py-1 rounded font-bold">
                         {room.id}
                       </span>
-                      {room.host_user_id === auth.currentUser?.uid && (
-                        <span className="text-[10px] bg-blue-500/20 text-blue-400 px-2 py-1 rounded font-bold uppercase tracking-tighter">
-                          ГМ
-                        </span>
-                      )}
+                      {/* We'll check host_user_id against session user id if needed */}
                     </div>
                     <p className={cn(
                       "text-sm line-clamp-2 italic",

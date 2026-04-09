@@ -1,39 +1,11 @@
 import { Request, Response, NextFunction } from 'express';
-import admin from 'firebase-admin';
+import { createClient } from '@supabase/supabase-js';
 import { usersRepository } from '../database/repositories/users.repository';
 
-// Инициализация один раз
-if (!admin || !admin.apps || admin.apps.length === 0) {
-  try {
-    // Поддерживаем обычный JSON и Base64 (для Render)
-    const rawJson = process.env.FIREBASE_SERVICE_ACCOUNT_JSON;
-    const base64Json = process.env.FIREBASE_SERVICE_ACCOUNT_JSON_B64;
-    
-    let serviceAccount;
-    if (base64Json) {
-      serviceAccount = JSON.parse(Buffer.from(base64Json, 'base64').toString('utf-8'));
-    } else if (rawJson) {
-      serviceAccount = JSON.parse(rawJson);
-    }
+const supabaseUrl = process.env.SUPABASE_URL || '';
+const supabaseAnonKey = process.env.SUPABASE_ANON_KEY || '';
 
-    if (serviceAccount) {
-      // Исправляем переносы строк в ключе
-      if (serviceAccount.private_key) {
-        serviceAccount.private_key = serviceAccount.private_key.replace(/\\n/g, '\n');
-      }
-      admin.initializeApp({
-        credential: admin.credential.cert(serviceAccount)
-      });
-      console.log('[Auth] Firebase Admin initialized with service account');
-    } else {
-      console.warn('[Auth] No service account found in env (FIREBASE_SERVICE_ACCOUNT_JSON or FIREBASE_SERVICE_ACCOUNT_JSON_B64). Firebase features might fail.');
-      // Не вызываем initializeApp() без аргументов, так как это упадет без дефолтных кредов Google Cloud
-    }
-  } catch (error) {
-    console.error('[Auth] Error initializing Firebase Admin:', error);
-    // Не выходим, чтобы сервер мог запуститься и мы увидели логи
-  }
-}
+const supabase = createClient(supabaseUrl, supabaseAnonKey);
 
 export async function authMiddleware(req: Request, res: Response, next: NextFunction) {
   try {
@@ -50,14 +22,19 @@ export async function authMiddleware(req: Request, res: Response, next: NextFunc
       return res.status(401).json({ error: 'Missing token' });
     }
 
-    const decodedToken = await admin.auth().verifyIdToken(token);
+    const { data: { user: supabaseUser }, error } = await supabase.auth.getUser(token);
     
-    // UPSERT юзера в нашу БД (теперь у нас есть свой UUID юзера)
+    if (error || !supabaseUser) {
+      console.error('[Auth] Supabase Auth Error:', error);
+      return res.status(401).json({ error: 'Unauthorized' });
+    }
+
+    // UPSERT юзера в нашу БД
     const user = await usersRepository.upsertByGoogleId({
-      googleId: decodedToken.uid,
-      email: decodedToken.email || '',
-      displayName: decodedToken.name || 'Unknown Traveler',
-      avatarUrl: decodedToken.picture || null
+      googleId: supabaseUser.id,
+      email: supabaseUser.email || '',
+      displayName: supabaseUser.user_metadata?.full_name || supabaseUser.email?.split('@')[0] || 'Unknown Traveler',
+      avatarUrl: supabaseUser.user_metadata?.avatar_url || null
     });
 
     req.user = user;

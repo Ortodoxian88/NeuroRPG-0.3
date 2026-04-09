@@ -3,11 +3,10 @@ import { Message, ChatSettings, AppSettings, Player } from '@/src/types';
 import { Loader2 } from 'lucide-react';
 import Markdown from 'react-markdown';
 import { cn } from '@/src/lib/utils';
-import { User } from 'firebase/auth';
 
 interface ChatAreaProps {
   messages: Message[];
-  currentUser: User | null;
+  currentUser: any;
   isGenerating: boolean;
   typingIndicator: string;
   generationError: string | null;
@@ -242,7 +241,7 @@ export default function ChatArea({
         const showAvatar = chatSettings?.avatarSize !== 'hidden';
 
         if (msg.role === 'player') {
-          const isMine = msg.playerUid === currentUser?.uid;
+          const isMine = msg.playerUid === currentUser?.id;
           const isLast = messages[messages.length - 1]?.id === msg.id;
           const isFocused = !chatSettings?.focusMode || isLast;
           
