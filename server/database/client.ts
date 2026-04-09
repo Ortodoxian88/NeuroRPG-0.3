@@ -5,7 +5,7 @@ const isProduction = process.env.NODE_ENV === 'production';
 
 // Инициализация пула соединений
 export const pool = new Pool({
-  connectionString: process.env.DATABASE_URL,
+  connectionString: process.env.DATABASE_URL || '',
   max: 10, // Ограничение Supabase Free Tier
   ssl: isProduction ? { rejectUnauthorized: false } : false,
 });
@@ -13,7 +13,7 @@ export const pool = new Pool({
 // Обработка ошибок простаивающих клиентов пула
 pool.on('error', (err) => {
   console.error('Unexpected error on idle client', err);
-  process.exit(-1);
+  // Не выходим сразу, даем серверу шанс восстановиться или хотя бы не падать в цикле
 });
 
 /**
