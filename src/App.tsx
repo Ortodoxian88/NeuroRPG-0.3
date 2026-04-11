@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useCallback } from 'react';
 import { supabase } from './supabase';
 import { signInWithGoogle, logout } from './supabase';
 import Lobby from '@/src/components/Lobby';
@@ -174,9 +174,14 @@ export default function App() {
 
     // Listen for auth changes
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
-      console.log("Auth state changed:", session?.user?.email);
       const currentUser = session?.user ?? null;
-      setUser(currentUser);
+      
+      setUser(prev => {
+        // Only update if ID changed to avoid unnecessary re-renders
+        if (prev?.id === currentUser?.id) return prev;
+        console.log("Auth state changed:", currentUser?.email);
+        return currentUser;
+      });
       
       if (currentUser) {
         const savedRoomId = localStorage.getItem(`currentRoomId_${currentUser.id}`);
@@ -192,21 +197,21 @@ export default function App() {
     return () => subscription.unsubscribe();
   }, []);
 
-  const handleRoomSelected = (roomId: string) => {
+  const handleRoomSelected = useCallback((roomId: string) => {
     if (!user) return;
     localStorage.setItem(`currentRoomId_${user.id}`, roomId);
     setCurrentRoomId(roomId);
     setActiveView('main');
-  };
+  }, [user]);
 
-  const handleMinimizeRoom = async () => {
+  const handleMinimizeRoom = useCallback(async () => {
     if (!user) return;
     localStorage.removeItem(`currentRoomId_${user.id}`);
     setCurrentRoomId(null);
     setActiveView('main');
-  };
+  }, [user]);
 
-  const handleLeaveRoom = async () => {
+  const handleLeaveRoom = useCallback(async () => {
     if (!user) return;
     if (currentRoomId) {
       setConfirmAction(() => () => {
@@ -222,7 +227,7 @@ export default function App() {
     localStorage.removeItem(`currentRoomId_${user.id}`);
     setCurrentRoomId(null);
     setActiveView('main');
-  };
+  }, [user, currentRoomId]);
 
   if (loading || profileLoading) {
     return (
