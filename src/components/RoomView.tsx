@@ -67,6 +67,21 @@ export default function RoomView({ roomId, user, onLeave, onMinimize, onOpenBest
   const hasJoined = !!me;
   const isSpectator = !isHost && !me;
 
+  // Debug logging
+  useEffect(() => {
+    console.log("[RoomView] State Update:", {
+      roomId,
+      userId: user?.id,
+      hostId: room?.hostId,
+      isHost,
+      hasJoined,
+      playersCount: players.length,
+      roomStatus: room?.status,
+      showJoinForm,
+      me: me?.name
+    });
+  }, [roomId, user?.id, room?.hostId, isHost, hasJoined, players.length, room?.status, showJoinForm, me]);
+
   // Vibration effect for new AI messages
   useEffect(() => {
     if (messages.length > 0 && messages[messages.length - 1].role === 'ai' && appSettings?.vibration) {
@@ -367,6 +382,13 @@ export default function RoomView({ roomId, user, onLeave, onMinimize, onOpenBest
 
       localStorage.setItem('lastCharacterName', characterName.trim());
       localStorage.setItem('lastCharacterProfile', characterProfile.trim());
+      
+      console.log("[RoomView] Join successful:", {
+        playerId: player.user_id,
+        playerName: player.character_name,
+        currentUserId: user?.id
+      });
+      
       setShowJoinForm(false);
     } catch (error) {
       console.error("Error joining room", error);
@@ -528,7 +550,16 @@ export default function RoomView({ roomId, user, onLeave, onMinimize, onOpenBest
     return <div className="flex-1 flex items-center justify-center"><Loader2 className="animate-spin text-neutral-500" /></div>;
   }
 
-  if ((!hasJoined && !isHost && room.status === 'lobby') || (isHost && showJoinForm && !hasJoined && room.status === 'lobby')) {
+  // Show join form if:
+  // 1. User hasn't joined AND (it's lobby OR they explicitly clicked Join)
+  // 2. EXCEPT if they are the host and haven't clicked Join yet (they see the lobby first)
+  const shouldShowJoinForm = !hasJoined && (
+    (!isHost && room.status === 'lobby') || 
+    (isHost && showJoinForm) ||
+    (room.status === 'playing' && !isHost) // Force join if game started and not joined
+  );
+
+  if (shouldShowJoinForm) {
     return (
       <div className="flex-1 flex flex-col p-4 overflow-y-auto pb-20">
         <div className="w-full bg-neutral-900 border border-neutral-800 rounded-xl p-6 space-y-6 relative">
