@@ -14,7 +14,7 @@ export const roomsRepository = {
   },
 
   async findById(id: string): Promise<RoomRow | null> {
-    const res = await query<RoomRow>('SELECT * FROM rooms WHERE id = $1', [id]);
+    const res = await query<RoomRow>('SELECT * FROM rooms WHERE id = $1::uuid', [id]);
     return res.rows[0] || null;
   },
 

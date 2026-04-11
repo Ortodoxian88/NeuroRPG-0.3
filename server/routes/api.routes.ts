@@ -182,7 +182,7 @@ apiRouter.get('/rooms', authMiddleware, async (req, res) => {
     const result = await query(
       `SELECT DISTINCT r.* FROM rooms r
        LEFT JOIN room_players rp ON rp.room_id = r.id
-       WHERE r.host_user_id = $1 OR rp.user_id = $1
+       WHERE r.host_user_id = $1::uuid OR rp.user_id = $1::uuid
        ORDER BY r.created_at DESC LIMIT 20`,
       [userId]
     );

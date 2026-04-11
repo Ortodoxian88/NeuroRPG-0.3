@@ -23,12 +23,12 @@ export const playersRepository = {
   },
 
   async findByRoom(roomId: string): Promise<RoomPlayerRow[]> {
-    const res = await query<RoomPlayerRow>('SELECT * FROM room_players WHERE room_id = $1', [roomId]);
+    const res = await query<RoomPlayerRow>('SELECT * FROM room_players WHERE room_id = $1::uuid', [roomId]);
     return res.rows;
   },
 
   async findByRoomAndUser(roomId: string, userId: string): Promise<RoomPlayerRow | null> {
-    const res = await query<RoomPlayerRow>('SELECT * FROM room_players WHERE room_id = $1 AND user_id = $2', [roomId, userId]);
+    const res = await query<RoomPlayerRow>('SELECT * FROM room_players WHERE room_id = $1::uuid AND user_id = $2::uuid', [roomId, userId]);
     return res.rows[0] || null;
   },
 
