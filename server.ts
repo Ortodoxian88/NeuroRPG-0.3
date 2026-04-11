@@ -3,20 +3,18 @@ import cors from 'cors';
 import path from 'path';
 import { apiRouter } from './server/routes/api.routes';
 import { checkDatabaseConnection } from './server/database/client';
-import { errorHandler } from './server/middleware/error.middleware';
-import { logger } from './server/utils/logger';
 import 'dotenv/config';
 
 // Global error handlers for better debugging on Render
 process.on('uncaughtException', (err) => {
-  logger.error('CRITICAL: Uncaught Exception', { error: err.message, stack: err.stack });
+  console.error('[Server] CRITICAL: Uncaught Exception:', err);
 });
 
 process.on('unhandledRejection', (reason, promise) => {
-  logger.error('CRITICAL: Unhandled Rejection', { reason });
+  console.error('[Server] CRITICAL: Unhandled Rejection at:', promise, 'reason:', reason);
 });
 
-logger.info('>>> NEURORPG SERVER STARTING <<<');
+console.log('[Server] >>> NEURORPG SERVER STARTING <<<');
 
 const app = express();
 
@@ -35,9 +33,6 @@ app.use((req, res, next) => {
 // 2. API Роуты
 // Регистрируем ПРЯМО ЗДЕСЬ для максимальной надежности
 app.use('/api', apiRouter);
-
-// 3. Error Handler (MUST be after routes)
-app.use(errorHandler);
 
 // Дополнительный проверочный роут прямо в корне app
 app.get('/api/ping', (req, res) => {
@@ -83,28 +78,28 @@ async function setupStatic() {
 // 5. Функция запуска
 async function startServer() {
   try {
-    logger.info('Checking database connection...');
+    console.log('[Server] Checking database connection...');
     let isDbConnected = false;
     try {
       isDbConnected = await checkDatabaseConnection();
     } catch (dbErr) {
-      logger.error('Unexpected error during DB connection check:', { error: dbErr });
+      console.error('[Server] Unexpected error during DB connection check:', dbErr);
     }
     
     if (!isDbConnected) {
-      logger.error('CRITICAL: Database not available. API endpoints will fail.');
-      logger.error('Ensure DATABASE_URL is set correctly in Render dashboard.');
+      console.error('[Server] ❌ CRITICAL: Database not available. API endpoints will fail.');
+      console.error('[Server] Ensure DATABASE_URL is set correctly in Render dashboard.');
     }
 
     await setupStatic();
 
     const PORT = Number(process.env.PORT) || 3000;
     app.listen(PORT, '0.0.0.0', () => {
-      logger.info(`Server started on port ${PORT}`);
-      logger.info(`Health check: http://localhost:${PORT}/api/health/db`);
+      console.log(`[Server] ✅ Started on port ${PORT}`);
+      console.log(`[Server] Health check: http://localhost:${PORT}/api/health/db`);
     });
   } catch (error) {
-    logger.error('Failed to start server:', { error });
+    console.error('[Server] Failed to start server:', error);
     process.exit(1);
   }
 }

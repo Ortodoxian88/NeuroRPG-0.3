@@ -1,10 +1,9 @@
 import React, { useState, useEffect } from 'react';
+import { supabase, logout } from '../supabase';
 import { AppSettings } from '../types';
 import { cn } from '../lib/utils';
-import { Plus, LogIn, BookOpen, PlayCircle, Bug, Settings, LogOut } from 'lucide-react';
+import { Plus, LogIn, BookOpen, PlayCircle, Shield, Bug, Settings, LogOut, Loader2, Users } from 'lucide-react';
 import { api } from '../services/api';
-import { authService } from '../services/auth';
-import { useAuth } from '../hooks/useAuth';
 
 interface LobbyProps {
   onOpenBestiary: () => void;
@@ -29,16 +28,15 @@ export default function Lobby({ onOpenBestiary, onOpenSettings, onOpenReport, ap
   const [isCreating, setIsCreating] = useState(false);
   const [activeRooms, setActiveRooms] = useState<ActiveRoom[]>([]);
   const [loadingRooms, setLoadingRooms] = useState(true);
-  const { user } = useAuth();
 
-  const handleLogout = async () => {
-    await authService.logout();
-    window.location.reload();
+  const handleLogout = () => {
+    logout();
   };
 
   useEffect(() => {
-    const loadRooms = async () => {
-      if (!user) return;
+    const checkUser = async () => {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) return;
       
       try {
         const rooms = await api.getRooms();
@@ -50,21 +48,23 @@ export default function Lobby({ onOpenBestiary, onOpenSettings, onOpenReport, ap
       }
     };
 
-    loadRooms();
-  }, [user]);
+    checkUser();
+  }, []);
 
   const handleSwitchRoom = async (roomId: string) => {
     onRoomSelected(roomId);
   };
 
   const handleCreateRoom = async () => {
-    if (!user) return;
+    const { data: { session } } = await supabase.auth.getSession();
+    if (!session) return;
     setIsCreating(true);
     try {
       const room = await api.createRoom(scenario);
       onRoomSelected(room.id);
     } catch (error) {
       console.error("Error creating room", error);
+      alert("Не удалось создать комнату.");
     } finally {
       setIsCreating(false);
     }
@@ -72,11 +72,20 @@ export default function Lobby({ onOpenBestiary, onOpenSettings, onOpenReport, ap
 
   const handleJoinRoom = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (joinCode.trim() && user) {
+    const { data: { session } } = await supabase.auth.getSession();
+    if (joinCode.trim() && session) {
       try {
+        // We just navigate to the room view, joining will happen there if needed
+        // But we need to find the room ID by join code first.
+        // For now, we'll just pass the join code to a new state in App.tsx, or we can fetch it here.
+        // Actually, let's just use the join code directly as the room ID in the frontend for now,
+        // and the RoomView will handle the actual joining process.
+        // Wait, the API needs the join code to join.
+        // Let's just pass the join code to App.tsx which will pass it to RoomView.
         onRoomSelected(joinCode.trim().toUpperCase());
       } catch (error) {
         console.error("Error joining room", error);
+        alert("Произошла ошибка при попытке войти в комнату.");
       }
     }
   };
@@ -116,7 +125,13 @@ export default function Lobby({ onOpenBestiary, onOpenSettings, onOpenReport, ap
                       <span className="font-mono text-xs text-orange-500 bg-orange-500/10 px-2 py-1 rounded font-bold">
                         {room.id}
                       </span>
-                      {/* We'll check host_user_id against session user id if needed */}
+                      <div className={cn(
+                        "flex items-center gap-1 text-[10px] font-bold uppercase tracking-widest",
+                        appSettings.theme === 'light' ? "text-neutral-400" : "text-neutral-500"
+                      )}>
+                        <Users size={12} />
+                        <span>? / 6</span>
+                      </div>
                     </div>
                     <p className={cn(
                       "text-sm line-clamp-2 italic",
@@ -155,7 +170,7 @@ export default function Lobby({ onOpenBestiary, onOpenSettings, onOpenReport, ap
               <button
                 onClick={handleCreateRoom}
                 disabled={isCreating || !scenario.trim()}
-                className="w-full bg-orange-600 hover:bg-orange-500 text-white font-bold py-4 px-4 rounded-2xl transition-all active:scale-95 disabled:opacity-50 text-base shadow-lg shadow-orange-600/20"
+                className="w-full bg-orange-600 hover:bg-orange-500 text-white font-bold py-4 px-4 rounded-2xl transition-all active:scale-95 disabled:opacity-50 text-base shadow-lg shadow-orange-600/20 btn-press"
               >
                 {isCreating ? 'Создание...' : 'Создать комнату'}
               </button>
@@ -188,7 +203,7 @@ export default function Lobby({ onOpenBestiary, onOpenSettings, onOpenReport, ap
                   onClick={handleJoinRoom}
                   disabled={!joinCode.trim()}
                   className={cn(
-                    "font-bold px-6 rounded-2xl transition-all active:scale-95 disabled:opacity-50 text-base shrink-0",
+                    "font-bold px-6 rounded-2xl transition-all active:scale-95 disabled:opacity-50 text-base shrink-0 btn-press",
                     appSettings.theme === 'light' ? "bg-neutral-100 hover:bg-neutral-200 text-neutral-900" : "bg-neutral-800 hover:bg-neutral-700 text-white"
                   )}
                 >
@@ -201,7 +216,7 @@ export default function Lobby({ onOpenBestiary, onOpenSettings, onOpenReport, ap
           <button
             onClick={onOpenBestiary}
             className={cn(
-              "w-full border font-bold py-5 px-4 rounded-3xl transition-all active:scale-95 flex items-center justify-center gap-3 text-base uppercase tracking-widest",
+              "w-full border font-bold py-5 px-4 rounded-3xl transition-all active:scale-95 flex items-center justify-center gap-3 text-base uppercase tracking-widest btn-press",
               appSettings.theme === 'light' 
                 ? "bg-white border-neutral-200 hover:bg-neutral-50 text-neutral-900 shadow-sm" 
                 : "bg-neutral-900/50 border-neutral-800 hover:bg-neutral-800 text-white"

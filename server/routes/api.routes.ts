@@ -20,78 +20,6 @@ apiRouter.use((req, res, next) => {
 
 // --- AI CONFIG & SCHEMAS ---
 
-const createRoomSchema = z.object({
-  scenario: z.string().min(1).max(2000),
-});
-
-const joinRoomSchema = z.object({
-  joinCode: z.string().min(1),
-  characterName: z.string().min(1),
-  characterProfile: z.string().min(1),
-  stats: z.object({
-    strength: z.number().optional(),
-    speed: z.number().optional(),
-    durability: z.number().optional(),
-    reaction: z.number().optional(),
-    power: z.number().optional(),
-    stamina: z.number().optional(),
-  }).optional(),
-  inventory: z.array(z.string()).optional(),
-  skills: z.array(z.string()).optional(),
-  alignment: z.string().optional(),
-});
-
-const playerActionSchema = z.object({
-  action: z.string().min(1),
-  isHidden: z.boolean().optional(),
-});
-
-const playerUpdateSchema = z.record(z.string(), z.any()); // Simplified for now as it can be any update
-
-const geminiJoinSchema = z.object({
-  characterName: z.string().min(1),
-  characterProfile: z.string().min(1),
-  roomId: z.string().optional(),
-});
-
-const geminiSummarizeSchema = z.object({
-  currentSummary: z.string().optional(),
-  recentMessages: z.string().min(1),
-  roomId: z.string().min(1),
-});
-
-const geminiGenerateSchema = z.object({
-  roomId: z.string().min(1),
-  playersContext: z.array(z.any()),
-  recentMessages: z.string(),
-  turn: z.number(),
-  actionsText: z.string(),
-  currentQuests: z.array(z.any()).optional(),
-  worldState: z.string().optional(),
-  factions: z.record(z.string(), z.any()).optional(),
-  hiddenTimers: z.record(z.string(), z.any()).optional(),
-  gmTone: z.string(),
-  difficulty: z.string(),
-  goreLevel: z.string(),
-  language: z.string(),
-});
-
-const geminiArchivistSchema = z.object({
-  candidates: z.array(z.object({
-    name: z.string(),
-    rawFacts: z.string(),
-    reason: z.string(),
-  })),
-  roomId: z.string().min(1),
-});
-
-const createMessageSchema = z.object({
-  content: z.string().min(1),
-  type: z.string().optional(),
-  turn_number: z.number().optional(),
-  metadata: z.record(z.string(), z.any()).optional(),
-});
-
 const gameResponseSchema = z.object({
   reasoning: z.string(),
   story: z.string(),
@@ -236,17 +164,18 @@ apiRouter.post('/report', async (req, res) => {
 
 // --- ROOMS API ---
 
-apiRouter.post('/rooms', authMiddleware, async (req, res, next) => {
+apiRouter.post('/rooms', authMiddleware, async (req, res) => {
   try {
-    const { scenario } = createRoomSchema.parse(req.body);
+    const { scenario } = req.body;
     const room = await roomsRepository.createRoom(req.user!.id, { scenario });
     res.status(201).json(room);
   } catch (error) {
-    next(error);
+    console.error('[API] Create room error:', error);
+    res.status(500).json({ error: 'Failed to create room' });
   }
 });
 
-apiRouter.get('/rooms', authMiddleware, async (req, res, next) => {
+apiRouter.get('/rooms', authMiddleware, async (req, res) => {
   try {
     const userId = req.user!.id;
     // Get rooms where user is host OR player
@@ -259,21 +188,21 @@ apiRouter.get('/rooms', authMiddleware, async (req, res, next) => {
     );
     res.json(result.rows);
   } catch (error) {
-    next(error);
+    res.status(500).json({ error: 'Failed to fetch rooms' });
   }
 });
 
-apiRouter.get('/rooms/:roomId', authMiddleware, async (req, res, next) => {
+apiRouter.get('/rooms/:roomId', authMiddleware, async (req, res) => {
   try {
     const room = await roomsRepository.findById(req.params.roomId);
     if (!room) return res.status(404).json({ error: 'Room not found' });
     res.json(room);
   } catch (error) {
-    next(error);
+    res.status(500).json({ error: 'Failed to fetch room' });
   }
 });
 
-apiRouter.post('/rooms/:roomId/start', authMiddleware, async (req, res, next) => {
+apiRouter.post('/rooms/:roomId/start', authMiddleware, async (req, res) => {
   try {
     const { roomId } = req.params;
     const room = await roomsRepository.findById(roomId);
@@ -286,13 +215,13 @@ apiRouter.post('/rooms/:roomId/start', authMiddleware, async (req, res, next) =>
     sseService.broadcast(roomId, 'room.updated', { ...room, status: 'playing', turn_number: 1 });
     res.json({ success: true });
   } catch (error) {
-    next(error);
+    res.status(500).json({ error: 'Failed to start room' });
   }
 });
 
-apiRouter.post('/rooms/join', authMiddleware, async (req, res, next) => {
+apiRouter.post('/rooms/join', authMiddleware, async (req, res) => {
   try {
-    const { joinCode, characterName, characterProfile, stats, inventory, skills, alignment } = joinRoomSchema.parse(req.body);
+    const { joinCode, characterName, characterProfile, stats, inventory, skills, alignment } = req.body;
     const room = await roomsRepository.findByJoinCode(joinCode);
     
     if (!room) return res.status(404).json({ error: 'Room not found or invalid code' });
@@ -336,26 +265,27 @@ apiRouter.post('/rooms/join', authMiddleware, async (req, res, next) => {
     
     res.json({ room, player });
   } catch (error) {
-    next(error);
+    console.error('[API] Join room error:', error);
+    res.status(500).json({ error: 'Failed to join room' });
   }
 });
 
 // --- PLAYERS API ---
 
-apiRouter.get('/rooms/:roomId/players', authMiddleware, async (req, res, next) => {
+apiRouter.get('/rooms/:roomId/players', authMiddleware, async (req, res) => {
   try {
     const room = await roomsRepository.findById(req.params.roomId);
     if (!room) return res.status(404).json({ error: 'Room not found' });
     const players = await playersRepository.findByRoom(room.id);
     res.json(players);
   } catch (error) {
-    next(error);
+    res.status(500).json({ error: 'Failed to fetch players' });
   }
 });
 
-apiRouter.post('/rooms/:roomId/players/action', authMiddleware, async (req, res, next) => {
+apiRouter.post('/rooms/:roomId/players/action', authMiddleware, async (req, res) => {
   try {
-    const { action, isHidden } = playerActionSchema.parse(req.body);
+    const { action, isHidden } = req.body;
     const { roomId: roomIdentifier } = req.params;
     
     const room = await roomsRepository.findById(roomIdentifier);
@@ -371,14 +301,14 @@ apiRouter.post('/rooms/:roomId/players/action', authMiddleware, async (req, res,
     
     res.json(updatedPlayer);
   } catch (error) {
-    next(error);
+    res.status(500).json({ error: 'Failed to submit action' });
   }
 });
 
-apiRouter.post('/rooms/:roomId/players/update', authMiddleware, async (req, res, next) => {
+apiRouter.post('/rooms/:roomId/players/update', authMiddleware, async (req, res) => {
   try {
     const { roomId: roomIdentifier } = req.params;
-    const updates = playerUpdateSchema.parse(req.body);
+    const updates = req.body;
     
     const room = await roomsRepository.findById(roomIdentifier);
     if (!room) return res.status(404).json({ error: 'Room not found' });
@@ -393,42 +323,36 @@ apiRouter.post('/rooms/:roomId/players/update', authMiddleware, async (req, res,
     
     res.json(updatedPlayer);
   } catch (error) {
-    next(error);
+    res.status(500).json({ error: 'Failed to update player' });
   }
 });
 
 // --- SSE REALTIME ---
 
-// --- SSE REALTIME ---
-
-apiRouter.get('/rooms/:roomId/events', authMiddleware, async (req, res, next) => {
-  try {
-    const { roomId: roomIdentifier } = req.params;
-    const room = await roomsRepository.findById(roomIdentifier);
-    if (!room) return res.status(404).json({ error: 'Room not found' });
-    sseService.subscribe(room.id, res);
-  } catch (error) {
-    next(error);
-  }
+apiRouter.get('/rooms/:roomId/events', authMiddleware, async (req, res) => {
+  const { roomId: roomIdentifier } = req.params;
+  const room = await roomsRepository.findById(roomIdentifier);
+  if (!room) return res.status(404).json({ error: 'Room not found' });
+  sseService.subscribe(room.id, res);
 });
 
 // --- BESTIARY API ---
 
-apiRouter.get('/bestiary', authMiddleware, async (req, res, next) => {
+apiRouter.get('/bestiary', authMiddleware, async (req, res) => {
   try {
     const { search = '', category } = req.query;
     const entries = await bestiaryRepository.search(String(search), category ? String(category) : undefined);
     res.json(entries);
   } catch (error) {
-    next(error);
+    res.status(500).json({ error: 'Failed to fetch bestiary' });
   }
 });
 
 // --- GEMINI / GAME LOGIC ---
 
-apiRouter.post("/gemini/join", authMiddleware, async (req, res, next) => {
+apiRouter.post("/gemini/join", authMiddleware, async (req, res) => {
   try {
-    const { characterName, characterProfile, roomId } = geminiJoinSchema.parse(req.body);
+    const { characterName, characterProfile, roomId } = req.body;
     const prompt = `Проанализируй анкету RPG персонажа и извлеки логичный стартовый инвентарь, список навыков/способностей и определи его мировоззрение (alignment).\nИмя персонажа: ${characterName}\nАнкета: ${characterProfile}\n\nВерни JSON объект с массивами "inventory" и "skills", а также строку "alignment". Названия должны быть на РУССКОМ языке.`;
 
     const text = await generateWithFallback(prompt, {
@@ -466,13 +390,13 @@ apiRouter.post("/gemini/join", authMiddleware, async (req, res, next) => {
 
     res.json(parsed);
   } catch (error) {
-    next(error);
+    res.status(500).json({ error: "Failed to generate" });
   }
 });
 
-apiRouter.post("/gemini/summarize", authMiddleware, async (req, res, next) => {
+apiRouter.post("/gemini/summarize", authMiddleware, async (req, res) => {
   try {
-    const { currentSummary, recentMessages, roomId } = geminiSummarizeSchema.parse(req.body);
+    const { currentSummary, recentMessages, roomId } = req.body;
     const uid = req.user!.id;
     
     const room = await roomsRepository.findById(roomId);
@@ -488,13 +412,13 @@ apiRouter.post("/gemini/summarize", authMiddleware, async (req, res, next) => {
     
     res.json({ text: aiText });
   } catch (error) {
-    next(error);
+    res.status(500).json({ error: "Failed to summarize" });
   }
 });
 
-apiRouter.post("/gemini/generate", authMiddleware, async (req, res, next) => {
+apiRouter.post("/gemini/generate", authMiddleware, async (req, res) => {
   try {
-    const { roomId, playersContext, recentMessages, turn, actionsText, currentQuests, worldState, factions, hiddenTimers, gmTone, difficulty, goreLevel, language } = geminiGenerateSchema.parse(req.body);
+    const { roomId, playersContext, recentMessages, turn, actionsText, currentQuests, worldState, factions, hiddenTimers, gmTone, difficulty, goreLevel, language } = req.body;
 
     const room = await roomsRepository.findById(roomId);
     if (!room) return res.status(404).json({ error: 'Room not found' });
@@ -503,71 +427,46 @@ apiRouter.post("/gemini/generate", authMiddleware, async (req, res, next) => {
     await query('UPDATE rooms SET turn_status = $1 WHERE id = $2', ['generating', roomId]);
     sseService.broadcast(roomId, 'room.updated', { ...room, turn_status: 'generating' });
 
-    const prompt = `Ты — Мастер Игры (Game Master) в текстовой RPG.
-Твоя задача — обрабатывать действия игроков, развивать сюжет и обновлять состояние мира.
+    const prompt = `Ты — ГМ в текстовой RPG. Обработай действия игроков, развивай сюжет, обновляй мир.
 
-НАСТРОЙКИ ИГРЫ:
-- Тон: ${gmTone}
-- Сложность: ${difficulty}
-- Жестокость: ${goreLevel}
-- Язык ответа: ${language}
+КОНТЕКСТ:
+- Тон: ${gmTone}, Сложность: ${difficulty}, Жестокость: ${goreLevel}, Язык: ${language}
+- Мир: ${worldState || 'Начало'}
+- Квесты: ${JSON.stringify(currentQuests || [])}
+- Фракции: ${JSON.stringify(factions || {})}
+- Игроки: ${JSON.stringify(playersContext || [])}
+- События: ${recentMessages}
+- Действия: ${actionsText}
 
-СОСТОЯНИЕ МИРА:
-${worldState || 'Начало игры.'}
+ЗАДАЧА:
+1. Опиши последствия действий с учетом характеристик игроков.
+2. Обнови состояние игроков, мира, фракций и таймеров.
+3. Выдели важные факты для энциклопедии (wikiCandidates).
 
-ТЕКУЩИЕ КВЕСТЫ:
-${JSON.stringify(currentQuests || [])}
-
-ФРАКЦИИ:
-${JSON.stringify(factions || {})}
-
-ИГРОКИ:
-${JSON.stringify(playersContext || [])}
-
-ПОСЛЕДНИЕ СОБЫТИЯ:
-${recentMessages}
-
-ДЕЙСТВИЯ ИГРОКОВ В ЭТОМ ХОДУ:
-${actionsText}
-
-ИНСТРУКЦИЯ:
-1. Проанализируй действия игроков. Учитывай их инвентарь, навыки и характеристики.
-2. Опиши результаты их действий (успех/провал) и реакцию мира.
-3. Обнови состояние каждого игрока (HP, мана, инвентарь и т.д.), если оно изменилось.
-4. Обнови состояние мира, фракций и скрытых таймеров.
-5. Если произошло что-то важное, добавь это в wikiCandidates.
-
-ВЕРНИ СТРОГИЙ JSON, СООТВЕТСТВУЮЩИЙ СЛЕДУЮЩЕЙ СХЕМЕ:
+ВЕРНИ JSON (по схеме):
 {
-  "reasoning": "Твои скрытые мысли как ГМ (не видны игрокам)",
-  "story": "Художественное описание результатов хода (визуализируется для игроков)",
-  "worldUpdates": "Обновленное описание состояния мира (если изменилось)",
-  "factionUpdates": { "Название Фракции": "Новое отношение/статус" },
-  "hiddenTimersUpdates": { "Название Таймера": 1 },
+  "reasoning": "Твои скрытые мысли как ГМ",
+  "story": "Художественное описание результатов хода",
+  "worldUpdates": "Обновление мира",
+  "factionUpdates": { "Фракция": "Статус" },
+  "hiddenTimersUpdates": { "Таймер": 1 },
   "stateUpdates": [
     {
-      "uid": "ID игрока (из playersContext)",
-      "hp": 100,
-      "mana": 50,
-      "stress": 0,
-      "alignment": "Neutral",
-      "inventory": ["Предмет 1"],
-      "skills": ["Навык 1"],
-      "injuries": [],
-      "statuses": [],
-      "mutations": [],
+      "uid": "ID игрока",
+      "hp": 100, "mana": 50, "stress": 0, "alignment": "Neutral",
+      "inventory": ["Предмет"], "skills": ["Навык"],
+      "injuries": [], "statuses": [], "mutations": [],
       "reputation": {},
       "stats": { "speed": 10, "reaction": 10, "strength": 10, "power": 10, "durability": 10, "stamina": 10 }
     }
   ],
   "wikiCandidates": [
-    { "name": "Название статьи", "rawFacts": "Факты", "reason": "Почему это важно" }
+    { "name": "Название", "rawFacts": "Факты", "reason": "Почему важно" }
   ]
 }`;
 
     const result = await generateWithValidation(prompt, {
       model: 'gemini-3-flash-preview',
-      thinkingConfig: { thinkingLevel: ThinkingLevel.HIGH },
       responseMimeType: "application/json"
     });
 
@@ -638,13 +537,13 @@ ${actionsText}
       const updatedRoom = await roomsRepository.findById(req.body.roomId);
       sseService.broadcast(req.body.roomId, 'room.updated', updatedRoom);
     }
-    next(error);
+    res.status(500).json({ error: "Failed to generate GM response" });
   }
 });
 
-apiRouter.post("/gemini/archivist", authMiddleware, async (req, res, next) => {
+apiRouter.post("/gemini/archivist", authMiddleware, async (req, res) => {
   try {
-    const { candidates, roomId } = geminiArchivistSchema.parse(req.body);
+    const { candidates, roomId } = req.body;
     const uid = req.user!.id;
 
     if (!candidates || !Array.isArray(candidates) || candidates.length === 0) {
@@ -733,13 +632,13 @@ ${existingEntry ? `У нас уже есть запись об этом:\n${exis
 
     res.json({ success: true });
   } catch (error) {
-    next(error);
+    res.status(500).json({ error: "Failed to process archivist candidates" });
   }
 });
 
 // --- ROOM MESSAGES ---
 
-apiRouter.get('/rooms/:roomId/messages', authMiddleware, async (req, res, next) => {
+apiRouter.get('/rooms/:roomId/messages', authMiddleware, async (req, res) => {
   try {
     const { roomId: roomIdentifier } = req.params;
     const { limit = 50, offset = 0 } = req.query;
@@ -750,14 +649,14 @@ apiRouter.get('/rooms/:roomId/messages', authMiddleware, async (req, res, next) 
     const messages = await messagesRepository.findByRoom(room.id, Number(limit), Number(offset));
     res.json(messages);
   } catch (error) {
-    next(error);
+    res.status(500).json({ error: 'Failed to fetch messages' });
   }
 });
 
-apiRouter.post('/rooms/:roomId/messages', authMiddleware, async (req, res, next) => {
+apiRouter.post('/rooms/:roomId/messages', authMiddleware, async (req, res) => {
   try {
     const { roomId: roomIdentifier } = req.params;
-    const { content, type, turn_number, metadata } = createMessageSchema.parse(req.body);
+    const { content, type, turn_number, metadata } = req.body;
     const validTypes = ['player_action', 'ai_response', 'dice_roll', 'system', 'secret'];
     const messageType = validTypes.includes(type) ? type : 'system';
 
@@ -776,6 +675,6 @@ apiRouter.post('/rooms/:roomId/messages', authMiddleware, async (req, res, next)
     sseService.broadcast(room.id, 'message.new', message);
     res.status(201).json(message);
   } catch (error) {
-    next(error);
+    res.status(500).json({ error: 'Internal Error' });
   }
 });

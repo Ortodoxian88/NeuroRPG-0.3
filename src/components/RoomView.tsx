@@ -1,20 +1,20 @@
 import React, { useEffect, useState, useRef } from 'react';
-import { Room, Player, Message, AppSettings, ChatSettings } from '../types';
+import { supabase } from '@/src/supabase';
+import { Room, Player, Message, AppSettings, ChatSettings } from '@/src/types';
 import { Users, Play, Loader2, Backpack, MessageSquare, Sparkles, X, CheckCircle2 } from 'lucide-react';
-import { cn } from '../lib/utils';
-import { typingIndicators } from '../lib/indicators';
-import { processWikiCandidates } from '../services/archivist';
-import { api } from '../services/api';
-import { SSEClient } from '../services/sse';
-import { useAuth } from '../hooks/useAuth';
+import { cn } from '@/src/lib/utils';
+import { typingIndicators } from '@/src/lib/indicators';
+import { processWikiCandidates } from '@/src/services/archivist';
+import { api } from '@/src/services/api';
+import { SSEClient } from '@/src/services/sse';
 
 // Subcomponents
-import ChatArea from './room/ChatArea';
-import ActionInput from './room/ActionInput';
-import InventoryTab from './room/InventoryTab';
-import StateTab from './room/StateTab';
-import QuestTab from './QuestTab';
-import DiceOverlay from './room/DiceOverlay';
+import ChatArea from '@/src/components/room/ChatArea';
+import { ActionInput } from '@/src/components/room/ActionInput';
+import { InventoryTab } from '@/src/components/room/InventoryTab';
+import { StateTab } from '@/src/components/room/StateTab';
+import QuestTab from '@/src/components/QuestTab';
+import { DiceOverlay } from '@/src/components/room/DiceOverlay';
 
 interface RoomViewProps {
   roomId: string;
@@ -62,11 +62,12 @@ export default function RoomView({ roomId, onLeave, onMinimize, onOpenBestiary, 
   const generatingTurnRef = useRef<number | null>(null);
   
   const [currentUser, setCurrentUser] = useState<any>(null);
-  const { user: authUser, getToken } = useAuth();
 
   useEffect(() => {
-    setCurrentUser(authUser);
-  }, [authUser]);
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      setCurrentUser(session?.user ?? null);
+    });
+  }, []);
 
   const isHost = Boolean(currentUser && room?.hostId === currentUser.id);
   const me = players.find(p => p.uid === currentUser?.id);
@@ -129,7 +130,7 @@ export default function RoomView({ roomId, onLeave, onMinimize, onOpenBestiary, 
   };
 
   const kickPlayer = async (uid: string) => {
-    if (!isHost) return;
+    if (!isHost || !window.confirm("Вы уверены, что хотите исключить этого игрока?")) return;
     // TODO: Implement kick via API
   };
 
@@ -357,7 +358,14 @@ export default function RoomView({ roomId, onLeave, onMinimize, onOpenBestiary, 
     if (!isHost || !room) return;
     try {
       await api.sendMessage(roomId, room.scenario, 'system', 0);
-      const token = await getToken();
+      // Room status will be updated via API or we can add a specific endpoint.
+      // For now, let's assume the first message starts the game, but we need to update room status.
+      // We should probably add an endpoint for starting the game.
+      // Let's just trigger generateAIResponse which will update the turn.
+      // Wait, the host starts the game by sending the scenario.
+      // Let's add a small fetch to update room status.
+      const { data: { session } } = await supabase.auth.getSession();
+      const token = session?.access_token;
       await fetch(`/api/rooms/${roomId}/start`, {
         method: 'POST',
         headers: {
@@ -418,7 +426,7 @@ export default function RoomView({ roomId, onLeave, onMinimize, onOpenBestiary, 
 
   const handleVoiceInput = () => {
     if (!('webkitSpeechRecognition' in window) && !('SpeechRecognition' in window)) {
-      console.warn("Ваш браузер не поддерживает распознавание речи.");
+      alert("Ваш браузер не поддерживает распознавание речи.");
       return;
     }
 
@@ -599,19 +607,6 @@ export default function RoomView({ roomId, onLeave, onMinimize, onOpenBestiary, 
         {activeTab === 'state' && (
           <StateTab 
             me={me} 
-            players={players} 
-            isHost={isHost} 
-            isSpectator={isSpectator} 
-            onExportLog={exportLog} 
-            onKickPlayer={kickPlayer} 
-            onUpdatePlayer={async (updates) => {
-              if (currentUser) {
-                await api.updatePlayer(roomId, updates);
-              }
-            }}
-            turn={room.turn}
-            storySummary={room.storySummary || ''}
-            room={room}
             appSettings={appSettings}
           />
         )}
@@ -737,8 +732,8 @@ export default function RoomView({ roomId, onLeave, onMinimize, onOpenBestiary, 
 
       {/* Bottom Navigation */}
       <div className={cn(
-        "shrink-0 border-t flex items-center justify-around p-3 pb-safe z-20",
-        appSettings?.theme === 'light' ? "bg-white border-neutral-200" : "bg-neutral-900 border-neutral-800"
+        "shrink-0 border-t flex items-center justify-around p-3 pb-safe z-20 shadow-[0_-4px_20px_rgba(0,0,0,0.25)]",
+        appSettings?.theme === 'light' ? "bg-white/95 border-neutral-200" : "bg-neutral-900/95 border-neutral-800"
       )}>
         <button
           onClick={() => setActiveTab('inventory')}

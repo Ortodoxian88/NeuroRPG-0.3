@@ -102,3 +102,7 @@ body {
   box-shadow: none !important;
   text-shadow: none !important;
 }
+
+.btn-press {
+  @apply transition-all active:scale-95;
+}

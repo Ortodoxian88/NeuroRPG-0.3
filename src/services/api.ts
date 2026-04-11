@@ -1,12 +1,13 @@
-import { authService } from './auth';
+import { supabase } from '../supabase';
 
 const API_URL = '/api';
 
 async function getAuthHeaders() {
-  const token = await authService.getToken();
-  if (!token) {
+  const { data: { session } } = await supabase.auth.getSession();
+  if (!session) {
     throw new Error('Not authenticated');
   }
+  const token = session.access_token;
   return {
     'Authorization': `Bearer ${token}`,
     'Content-Type': 'application/json'

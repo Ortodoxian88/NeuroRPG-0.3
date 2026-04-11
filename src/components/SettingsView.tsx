@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
-import { AppSettings, ChatSettings } from '../types';
+import { AppSettings, ChatSettings } from '@/src/types';
 import { X, Globe, MessageSquare, Monitor, Type, Palette, Zap, ShieldAlert, Info, Trash2, Bug } from 'lucide-react';
-import { cn } from '../lib/utils';
+import { cn } from '@/src/lib/utils';
 
 interface SettingsViewProps {
   appSettings: AppSettings;
@@ -428,10 +428,10 @@ function Section({ title, icon, children, appSettings }: { title: string, icon: 
   return (
     <div className="space-y-4">
       <h3 className={cn(
-        "text-sm font-black uppercase tracking-widest flex items-center gap-3 pb-2 border-b",
+        "text-lg font-bold tracking-tight flex items-center gap-3 pb-3 border-b",
         appSettings.theme === 'light' ? "text-neutral-900 border-neutral-200" : "text-white border-neutral-800"
       )}>
-        <span className="text-orange-500">{icon}</span>
+        <span className="text-orange-500 bg-orange-500/10 p-2 rounded-xl">{icon}</span>
         {title}
       </h3>
       <div className="space-y-4">

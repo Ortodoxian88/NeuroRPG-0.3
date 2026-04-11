@@ -2,63 +2,58 @@ import { query } from '../client';
 import { RoomPlayerRow } from '../types';
 
 export const playersRepository = {
-  async create(data: any): Promise<RoomPlayerRow> {
-    const fields = Object.keys(data);
-    const placeholders = fields.map((_, i) => `$${i + 1}`).join(', ');
-    const text = `
-      INSERT INTO room_players (${fields.join(', ')})
-      VALUES (${placeholders})
-      RETURNING *
+  async create(data: Omit<RoomPlayerRow, 'id' | 'created_at' | 'updated_at'>): Promise<RoomPlayerRow> {
+    const sql = `
+      INSERT INTO room_players (
+        room_id, user_id, character_name, character_profile, hp, hp_max, mana, mana_max, 
+        stress, stress_max, stat_strength, stat_dexterity, stat_constitution, stat_intelligence, 
+        stat_wisdom, stat_charisma, inventory, skills, statuses, injuries, alignment, mutations, 
+        reputation, current_action, is_ready, is_online, last_active_at
+      )
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26, NOW())
+      RETURNING *;
     `;
-    const res = await query<RoomPlayerRow>(text, Object.values(data));
+    const res = await query<RoomPlayerRow>(sql, [
+      data.room_id, data.user_id, data.character_name, data.character_profile, data.hp, data.hp_max, data.mana, data.mana_max,
+      data.stress, data.stress_max, data.stat_strength, data.stat_dexterity, data.stat_constitution, data.stat_intelligence,
+      data.stat_wisdom, data.stat_charisma, data.inventory, data.skills, data.statuses, data.injuries, data.alignment, data.mutations,
+      data.reputation, data.current_action, data.is_ready, data.is_online
+    ]);
     return res.rows[0];
   },
 
   async findByRoom(roomId: string): Promise<RoomPlayerRow[]> {
-    const text = `
-      SELECT rp.*, u.display_name, u.avatar_url
-      FROM room_players rp
-      JOIN users u ON u.google_id = rp.user_id
-      WHERE rp.room_id = $1
-    `;
-    const res = await query<RoomPlayerRow>(text, [roomId]);
+    const res = await query<RoomPlayerRow>('SELECT * FROM room_players WHERE room_id = $1', [roomId]);
     return res.rows;
   },
 
   async findByRoomAndUser(roomId: string, userId: string): Promise<RoomPlayerRow | null> {
-    const text = `
-      SELECT rp.*, u.display_name, u.avatar_url
-      FROM room_players rp
-      JOIN users u ON u.google_id = rp.user_id
-      WHERE rp.room_id = $1 AND rp.user_id = $2
-    `;
-    const res = await query<RoomPlayerRow>(text, [roomId, userId]);
+    const res = await query<RoomPlayerRow>('SELECT * FROM room_players WHERE room_id = $1 AND user_id = $2', [roomId, userId]);
     return res.rows[0] || null;
   },
 
-  async updateAction(id: string, action: string, isReady: boolean): Promise<RoomPlayerRow | null> {
-    const text = `
-      UPDATE room_players
-      SET current_action = $2, is_ready = $3, updated_at = NOW()
-      WHERE id = $1
-      RETURNING *
+  async updateAction(id: string, action: string, isReady: boolean): Promise<RoomPlayerRow> {
+    const sql = `
+      UPDATE room_players 
+      SET current_action = $1, is_ready = $2, updated_at = NOW() 
+      WHERE id = $3 
+      RETURNING *;
     `;
-    const res = await query<RoomPlayerRow>(text, [id, action, isReady]);
-    return res.rows[0] || null;
+    const res = await query<RoomPlayerRow>(sql, [action, isReady, id]);
+    return res.rows[0];
   },
 
-  async updateState(id: string, updates: any): Promise<RoomPlayerRow | null> {
-    const fields = Object.keys(updates);
-    if (fields.length === 0) return null;
-    
-    const setClause = fields.map((f, i) => `${f} = $${i + 2}`).join(', ');
-    const text = `
-      UPDATE room_players
-      SET ${setClause}, updated_at = NOW()
-      WHERE id = $1
-      RETURNING *
+  async updateState(id: string, updates: Partial<RoomPlayerRow>): Promise<RoomPlayerRow> {
+    // В реальном проекте здесь нужен динамический SQL билдер
+    // Для простоты пока сделаем упрощенную версию
+    const sql = `
+      UPDATE room_players 
+      SET hp = COALESCE($1, hp), mana = COALESCE($2, mana), stress = COALESCE($3, stress), 
+          inventory = COALESCE($4, inventory), updated_at = NOW()
+      WHERE id = $5 
+      RETURNING *;
     `;
-    const res = await query<RoomPlayerRow>(text, [id, ...Object.values(updates)]);
-    return res.rows[0] || null;
+    const res = await query<RoomPlayerRow>(sql, [updates.hp, updates.mana, updates.stress, updates.inventory, id]);
+    return res.rows[0];
   }
 };

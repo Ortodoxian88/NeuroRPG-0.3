@@ -2,33 +2,34 @@ import { query } from '../client';
 import { BestiaryRow } from '../types';
 
 export const bestiaryRepository = {
-  async create(data: any): Promise<BestiaryRow> {
-    const fields = Object.keys(data);
-    const placeholders = fields.map((_, i) => `$${i + 1}`).join(', ');
-    const text = `
-      INSERT INTO bestiary (${fields.join(', ')})
-      VALUES (${placeholders})
-      RETURNING *
-    `;
-    const res = await query<BestiaryRow>(text, Object.values(data));
-    return res.rows[0];
-  },
-
-  async search(searchTerm: string, category?: string): Promise<BestiaryRow[]> {
-    let text = `
-      SELECT * FROM bestiary
-      WHERE (title ILIKE $1 OR content ILIKE $1)
-    `;
-    const values: any[] = [`%${searchTerm}%`];
+  async search(search: string, category?: string): Promise<BestiaryRow[]> {
+    let sql = 'SELECT * FROM bestiary WHERE 1=1';
+    const params: any[] = [];
     
-    if (category) {
-      text += ` AND category = $2`;
-      values.push(category);
+    if (search) {
+      params.push(`%${search}%`);
+      sql += ` AND (title ILIKE $${params.length} OR $${params.length} = ANY(tags))`;
     }
     
-    text += ` ORDER BY title ASC LIMIT 50`;
+    if (category) {
+      params.push(category);
+      sql += ` AND category = $${params.length}`;
+    }
     
-    const res = await query<BestiaryRow>(text, values);
+    const res = await query<BestiaryRow>(sql, params);
     return res.rows;
+  },
+
+  async create(data: Omit<BestiaryRow, 'id' | 'created_at' | 'updated_at'>): Promise<BestiaryRow> {
+    const sql = `
+      INSERT INTO bestiary (slug, title, category, content, tags, nature, knowledge_level, author_notes, source_room_id, discovered_by_user_id, created_at, updated_at)
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, NOW(), NOW())
+      RETURNING *;
+    `;
+    const res = await query<BestiaryRow>(sql, [
+      data.slug, data.title, data.category, data.content, data.tags, data.nature, 
+      data.knowledge_level, data.author_notes, data.source_room_id, data.discovered_by_user_id
+    ]);
+    return res.rows[0];
   }
 };

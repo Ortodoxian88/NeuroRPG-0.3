@@ -4,25 +4,22 @@
  */
 
 import { useEffect, useState } from 'react';
-import Lobby from './components/Lobby';
-import RoomView from './components/RoomView';
-import BestiaryView from './components/BestiaryView';
-import SettingsView from './components/SettingsView';
-import ErrorBoundary from './components/ErrorBoundary';
-import ReportModal from './components/ReportModal';
-import ProfileView from './components/ProfileView';
-import { LogOut, BookOpen, Home, DoorOpen, MoreVertical, Settings, Bug, X, Send, CheckCircle2, Loader2, Sparkles } from 'lucide-react';
-import { cn } from './lib/utils';
-import { useAuth } from './hooks/useAuth';
-import { useSettings } from './contexts/SettingsContext';
-import { authService } from './services/auth';
-import { signInWithGoogle } from './supabase';
+import { supabase } from './supabase';
+import { signInWithGoogle, logout } from './supabase';
+import Lobby from '@/src/components/Lobby';
+import RoomView from '@/src/components/RoomView';
+import BestiaryView from '@/src/components/BestiaryView';
+import SettingsView from '@/src/components/SettingsView';
+import ErrorBoundary from '@/src/components/ErrorBoundary';
+import { LogOut, BookOpen, Home, DoorOpen, MoreVertical, Settings, Bug, X, Send, CheckCircle2, Loader2, Sparkles, Zap, Ghost, Sword, MessageSquarePlus } from 'lucide-react';
+import { ConfirmModal } from './components/ConfirmModal';
+import { UserProfile, AppSettings, ChatSettings } from './types';
+import { cn } from '@/src/lib/utils';
 
 type ViewState = 'main' | 'bestiary' | 'settings';
 
 export default function App() {
-  const { appSettings, setAppSettings, chatSettings, setChatSettings } = useSettings();
-  const { user, loading: authLoading } = useAuth();
+  const [user, setUser] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [currentRoomId, setCurrentRoomId] = useState<string | null>(null);
   const [profileLoading, setProfileLoading] = useState(true);
@@ -30,17 +27,107 @@ export default function App() {
   const [showProfile, setShowProfile] = useState(false);
   const [isOffline, setIsOffline] = useState(!navigator.onLine);
   const [showMoreMenu, setShowMoreMenu] = useState(false);
+  const [showConfirmModal, setShowConfirmModal] = useState(false);
   const [showReportModal, setShowReportModal] = useState(false);
+  const [confirmAction, setConfirmAction] = useState<() => void>(() => {});
+  const [reportType, setReportType] = useState<'bug' | 'suggestion' | 'typo'>('bug');
+  const [reportMessage, setReportMessage] = useState('');
+  const [isReporting, setIsReporting] = useState(false);
+  const [reportSuccess, setReportSuccess] = useState(false);
   const [authError, setAuthError] = useState<string | null>(null);
   const [isSigningIn, setIsSigningIn] = useState(false);
 
+  // Settings State
+  const [appSettings, setAppSettings] = useState<AppSettings>(() => {
+    const saved = localStorage.getItem('appSettings');
+    return saved ? JSON.parse(saved) : {
+      goreLevel: 'medium',
+      gmTone: 'classic',
+      difficulty: 'normal',
+      theme: 'dark',
+      language: 'ru',
+      soundEffects: true,
+      vibration: true,
+      animations: true,
+      performanceMode: false
+    };
+  });
+
+  const [chatSettings, setChatSettings] = useState<ChatSettings>(() => {
+    const saved = localStorage.getItem('chatSettings');
+    return saved ? JSON.parse(saved) : {
+      fontFamily: 'sans',
+      fontSize: 'md',
+      lineHeight: 'normal',
+      tracking: 'normal',
+      boldNames: true,
+      italicActions: true,
+      highlightKeywords: false,
+      textAlign: 'left',
+      autoCapitalize: true,
+      typewriterSpeed: 30,
+      messageStyle: 'bubbles',
+      compactMode: false,
+      showTimestamps: true,
+      avatarSize: 'md',
+      hideSystemMessages: false,
+      playerColors: true,
+      aiTextColor: 'default',
+      borderStyle: 'rounded',
+      shadowIntensity: 'sm',
+      linkColor: 'blue',
+      whisperColor: 'gray',
+      errorColor: 'red',
+      autoScroll: true,
+      smoothScroll: true,
+      enableMarkdown: true,
+      focusMode: false
+    };
+  });
+
   useEffect(() => {
+    localStorage.setItem('appSettings', JSON.stringify(appSettings));
     if (appSettings.theme === 'light') {
       document.body.classList.add('light-theme');
     } else {
       document.body.classList.remove('light-theme');
     }
-  }, [appSettings.theme]);
+  }, [appSettings]);
+
+  useEffect(() => {
+    localStorage.setItem('chatSettings', JSON.stringify(chatSettings));
+  }, [chatSettings]);
+
+  const handleSendReport = async () => {
+    if (!reportMessage.trim() || !user) return;
+    setIsReporting(true);
+    try {
+      const reportUrl = '/api/report';
+      const response = await fetch(reportUrl, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          type: reportType,
+          message: reportMessage,
+          userEmail: user.email,
+          roomId: currentRoomId,
+          version: '0.2.9'
+        })
+      });
+      if (response.ok) {
+        setReportSuccess(true);
+        setReportMessage('');
+        setTimeout(() => {
+          setReportSuccess(false);
+          setShowReportModal(false);
+        }, 3000);
+      }
+    } catch (e) {
+      console.error("Report failed", e);
+    } finally {
+      setIsReporting(false);
+    }
+  };
 
   useEffect(() => {
     const handleClickOutside = () => setShowMoreMenu(false);
@@ -72,15 +159,38 @@ export default function App() {
   }, []);
 
   useEffect(() => {
-    setLoading(authLoading);
-    setProfileLoading(false);
-    if (user) {
-      const savedRoomId = localStorage.getItem(`currentRoomId_${user.id}`);
-      if (savedRoomId) {
-        setCurrentRoomId(savedRoomId);
+    // Get initial session
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      setUser(session?.user ?? null);
+      if (session?.user) {
+        const savedRoomId = localStorage.getItem(`currentRoomId_${session.user.id}`);
+        if (savedRoomId) {
+          setCurrentRoomId(savedRoomId);
+        }
       }
-    }
-  }, [user, authLoading]);
+      setLoading(false);
+      setProfileLoading(false);
+    });
+
+    // Listen for auth changes
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+      console.log("Auth state changed:", session?.user?.email);
+      const currentUser = session?.user ?? null;
+      setUser(currentUser);
+      
+      if (currentUser) {
+        const savedRoomId = localStorage.getItem(`currentRoomId_${currentUser.id}`);
+        if (savedRoomId) {
+          setCurrentRoomId(savedRoomId);
+        }
+      }
+      
+      setLoading(false);
+      setProfileLoading(false);
+    });
+
+    return () => subscription.unsubscribe();
+  }, []);
 
   const handleRoomSelected = (roomId: string) => {
     if (!user) return;
@@ -98,6 +208,16 @@ export default function App() {
 
   const handleLeaveRoom = async () => {
     if (!user) return;
+    if (currentRoomId) {
+      setConfirmAction(() => () => {
+        localStorage.removeItem(`currentRoomId_${user.id}`);
+        setCurrentRoomId(null);
+        setActiveView('main');
+        setShowConfirmModal(false);
+      });
+      setShowConfirmModal(true);
+      return;
+    }
     
     localStorage.removeItem(`currentRoomId_${user.id}`);
     setCurrentRoomId(null);
@@ -161,12 +281,87 @@ export default function App() {
           </div>
 
           {/* Report Modal */}
-          <ReportModal 
-            isOpen={showReportModal} 
-            onClose={() => setShowReportModal(false)} 
-            userEmail={user?.email} 
-            roomId={currentRoomId} 
-          />
+          {showReportModal && (
+            <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 sm:p-6 bg-black/80 backdrop-blur-md">
+              <div className="w-full max-w-lg bg-neutral-950 border border-neutral-800 rounded-3xl shadow-2xl overflow-hidden flex flex-col relative">
+                {/* Glow effect */}
+                <div className="absolute top-0 left-1/2 -translate-x-1/2 w-3/4 h-1 bg-gradient-to-r from-transparent via-orange-500 to-transparent opacity-50 blur-sm"></div>
+                
+                <div className="p-6 border-b border-neutral-900 flex justify-between items-center bg-neutral-900/30">
+                  <div className="flex items-center gap-4">
+                    <div className="p-3 bg-orange-500/10 text-orange-500 rounded-2xl border border-orange-500/20">
+                      <Bug size={24} />
+                    </div>
+                    <div>
+                      <h3 className="text-xl font-bold text-white tracking-tight">Обратная связь</h3>
+                      <p className="text-xs text-neutral-500 font-medium uppercase tracking-widest mt-0.5">Нашли баг или есть идея?</p>
+                    </div>
+                  </div>
+                  <button onClick={() => setShowReportModal(false)} className="p-2 text-neutral-500 hover:text-white hover:bg-neutral-800 rounded-xl transition-colors">
+                    <X size={20} />
+                  </button>
+                </div>
+
+                <div className="p-6 space-y-6">
+                  {reportSuccess ? (
+                    <div className="py-12 flex flex-col items-center text-center space-y-4 animate-in fade-in zoom-in duration-300">
+                      <div className="w-20 h-20 bg-green-500/10 border border-green-500/20 rounded-full flex items-center justify-center text-green-500 mb-2">
+                        <CheckCircle2 size={40} />
+                      </div>
+                      <div className="space-y-2">
+                        <h3 className="text-2xl font-bold text-white">Спасибо за вклад!</h3>
+                        <p className="text-sm text-neutral-400 leading-relaxed max-w-xs mx-auto">
+                          Твой репорт уже летит к разработчику на крыльях цифрового дракона. Вместе мы сделаем NeuroRPG легендарной.
+                        </p>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="space-y-6 animate-in fade-in duration-300">
+                      <div className="flex gap-2 p-1 bg-neutral-900 rounded-2xl border border-neutral-800">
+                        {(['bug', 'suggestion', 'typo'] as const).map(t => (
+                          <button
+                            key={t}
+                            onClick={() => setReportType(t)}
+                            className={cn(
+                              "flex-1 py-2.5 text-xs font-bold uppercase tracking-wider rounded-xl transition-all",
+                              reportType === t 
+                                ? "bg-neutral-800 text-white shadow-sm border border-neutral-700" 
+                                : "text-neutral-500 hover:text-neutral-300"
+                            )}
+                          >
+                            {t === 'bug' ? 'Баг' : t === 'suggestion' ? 'Идея' : 'Опечатка'}
+                          </button>
+                        ))}
+                      </div>
+
+                      <div className="space-y-2">
+                        <label className="text-xs font-bold text-neutral-500 uppercase tracking-widest">Описание проблемы</label>
+                        <textarea
+                          value={reportMessage}
+                          onChange={(e) => setReportMessage(e.target.value)}
+                          placeholder={
+                            reportType === 'bug' ? "Что сломалось? Как это повторить?" :
+                            reportType === 'suggestion' ? "Опиши свою гениальную идею..." :
+                            "Где мы ошиблись в тексте?"
+                          }
+                          className="w-full h-32 bg-neutral-900 border border-neutral-800 rounded-2xl p-4 text-white placeholder-neutral-600 focus:outline-none focus:border-orange-500 focus:ring-1 focus:ring-orange-500 transition-all resize-none text-sm"
+                        />
+                      </div>
+
+                      <button
+                        onClick={handleSendReport}
+                        disabled={isReporting || !reportMessage.trim()}
+                        className="w-full flex items-center justify-center gap-2 py-4 bg-orange-600 hover:bg-orange-500 disabled:bg-neutral-800 disabled:text-neutral-600 text-white rounded-2xl font-bold transition-all"
+                      >
+                        {isReporting ? <Loader2 size={18} className="animate-spin" /> : <Send size={18} />}
+                        {isReporting ? 'Отправка...' : 'Отправить репорт'}
+                      </button>
+                    </div>
+                  )}
+                </div>
+              </div>
+            </div>
+          )}
         </div>
       </div>
     );
@@ -262,11 +457,63 @@ export default function App() {
 
         <main className="flex-1 flex flex-col relative overflow-hidden">
           {showProfile ? (
-            <ProfileView 
-              user={user} 
-              onClose={() => setShowProfile(false)} 
-              onOpenSettings={() => { setShowProfile(false); setActiveView('settings'); }}
-            />
+            <div className={cn(
+              "flex-1 flex flex-col p-6 space-y-8 overflow-y-auto",
+              appSettings.theme === 'light' ? "bg-white" : "bg-black"
+            )}>
+              <div className="flex justify-between items-center">
+                <h2 className="text-2xl font-bold font-display">Профиль</h2>
+                <button onClick={() => setShowProfile(false)} className="p-2 text-neutral-500 hover:text-white">
+                  <X size={24} />
+                </button>
+              </div>
+
+              <div className="flex flex-col items-center text-center space-y-4 py-4">
+                <div className="w-32 h-32 rounded-[2.5rem] bg-neutral-800 border-2 border-orange-500/30 flex items-center justify-center overflow-hidden shadow-2xl shadow-orange-500/10">
+                  {user.user_metadata?.avatar_url ? (
+                    <img src={user.user_metadata.avatar_url} alt="" className="w-full h-full object-cover" />
+                  ) : (
+                    <span className="text-5xl font-bold">{user.email?.[0].toUpperCase()}</span>
+                  )}
+                </div>
+                <div>
+                  <h3 className="text-2xl font-bold text-white">{user.user_metadata?.full_name || user.email?.split('@')[0]}</h3>
+                  <p className="text-neutral-500 text-sm">{user.email}</p>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-4">
+                <div className="bg-neutral-900/50 border border-neutral-800 p-4 rounded-3xl space-y-1">
+                  <p className="text-[10px] font-bold text-neutral-500 uppercase tracking-widest">Статус</p>
+                  <p className="text-white font-bold flex items-center gap-2">
+                    <div className="w-2 h-2 rounded-full bg-green-500 animate-pulse" />
+                    В сети
+                  </p>
+                </div>
+                <div className="bg-neutral-900/50 border border-neutral-800 p-4 rounded-3xl space-y-1">
+                  <p className="text-[10px] font-bold text-neutral-500 uppercase tracking-widest">ID</p>
+                  <p className="text-white font-mono text-xs truncate">{user.id.slice(0, 8)}...</p>
+                </div>
+              </div>
+
+              <div className="space-y-4">
+                <h4 className="text-xs font-bold text-neutral-500 uppercase tracking-widest px-2">Управление</h4>
+                <button 
+                  onClick={() => { setShowProfile(false); setActiveView('settings'); }}
+                  className="w-full flex items-center gap-4 p-4 bg-neutral-900 hover:bg-neutral-800 border border-neutral-800 rounded-2xl transition-all"
+                >
+                  <Settings size={20} className="text-neutral-400" />
+                  <span className="font-bold">Настройки</span>
+                </button>
+                <button 
+                  onClick={() => { logout(); setShowProfile(false); }}
+                  className="w-full flex items-center gap-4 p-4 bg-red-500/10 hover:bg-red-500/20 border border-red-500/20 rounded-2xl transition-all text-red-500"
+                >
+                  <LogOut size={20} />
+                  <span className="font-bold">Выйти из аккаунта</span>
+                </button>
+              </div>
+            </div>
           ) : activeView === 'bestiary' ? (
             <BestiaryView onBack={() => setActiveView('main')} appSettings={appSettings} />
           ) : activeView === 'settings' ? (
@@ -289,7 +536,7 @@ export default function App() {
           ) : (
             <Lobby 
               onOpenBestiary={() => setActiveView('bestiary')} 
-              onOpenSettings={() => { setActiveView('settings'); }}
+              onOpenSettings={() => setActiveView('settings')}
               onOpenReport={() => setShowReportModal(true)}
               appSettings={appSettings}
               onRoomSelected={handleRoomSelected}
@@ -297,13 +544,79 @@ export default function App() {
           )}
         </main>
         
-        {/* Global Report Modal (for logged in users) */}
-        <ReportModal 
-          isOpen={showReportModal} 
-          onClose={() => setShowReportModal(false)} 
-          userEmail={user?.email} 
-          roomId={currentRoomId} 
+        {/* Confirm Modal */}
+        <ConfirmModal
+          isOpen={showConfirmModal}
+          title="Покинуть игру"
+          message="Вы уверены, что хотите полностью покинуть эту игру? Ваш персонаж останется в истории, но вы больше не будете активным участником."
+          onConfirm={confirmAction}
+          onCancel={() => setShowConfirmModal(false)}
+          appSettings={appSettings}
         />
+
+        {/* Global Report Modal (for logged in users) */}
+        {showReportModal && user && (
+          <div className="fixed inset-0 z-[100] flex items-center justify-center p-6 bg-black/90 backdrop-blur-sm">
+            <div className="w-full max-w-sm bg-neutral-900 border border-neutral-800 rounded-3xl p-6 shadow-2xl space-y-6">
+              {reportSuccess ? (
+                <div className="py-8 flex flex-col items-center text-center space-y-4">
+                  <div className="w-16 h-16 bg-green-500/20 rounded-full flex items-center justify-center text-green-500">
+                    <CheckCircle2 size={40} />
+                  </div>
+                  <div className="space-y-2">
+                    <h3 className="text-xl font-bold text-white">Спасибо за вклад!</h3>
+                    <p className="text-sm text-neutral-400 leading-relaxed">
+                      Твой репорт уже летит к разработчику на крыльях цифрового дракона. Вместе мы сделаем NeuroRPG легендарной.
+                    </p>
+                  </div>
+                </div>
+              ) : (
+                <>
+                  <div className="flex justify-between items-center">
+                    <h3 className="text-lg font-bold text-white flex items-center gap-2">
+                      <Bug size={20} className="text-orange-500" />
+                      Обратная связь
+                    </h3>
+                    <button onClick={() => setShowReportModal(false)} className="text-neutral-500 hover:text-white">
+                      <X size={20} />
+                    </button>
+                  </div>
+
+                  <div className="flex gap-2">
+                    {(['bug', 'suggestion', 'typo'] as const).map(t => (
+                      <button
+                        key={t}
+                        onClick={() => setReportType(t)}
+                        className={cn(
+                          "flex-1 py-3 text-xs font-bold uppercase tracking-widest rounded-xl border transition-all",
+                          reportType === t ? "bg-orange-600 border-orange-500 text-white" : "bg-neutral-800 border-neutral-700 text-neutral-500"
+                        )}
+                      >
+                        {t === 'bug' ? 'Баг' : t === 'suggestion' ? 'Идея' : 'Текст'}
+                      </button>
+                    ))}
+                  </div>
+
+                  <textarea
+                    value={reportMessage}
+                    onChange={(e) => setReportMessage(e.target.value)}
+                    placeholder="Опиши проблему или идею..."
+                    className="w-full h-32 bg-black border border-neutral-800 rounded-2xl p-4 text-base text-white outline-none focus:border-orange-500 transition-colors resize-none"
+                  />
+
+                  <button
+                    onClick={handleSendReport}
+                    disabled={isReporting || !reportMessage.trim()}
+                    className="w-full py-4 bg-white text-black font-bold text-base rounded-2xl flex items-center justify-center gap-2 hover:bg-neutral-200 transition-all disabled:opacity-50"
+                  >
+                    {isReporting ? <Loader2 size={24} className="animate-spin" /> : <Send size={24} />}
+                    Отправить отчет
+                  </button>
+                </>
+              )}
+            </div>
+          </div>
+        )}
       </div>
     </ErrorBoundary>
   );
