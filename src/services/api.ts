@@ -102,34 +102,6 @@ export const api = {
   },
 
   // AI
-  async generateJoin(characterName: string, characterProfile: string, roomId?: string) {
-    const headers = await getAuthHeaders();
-    const res = await fetch(`${API_URL}/gemini/join`, {
-      method: 'POST',
-      headers,
-      body: JSON.stringify({ characterName, characterProfile, roomId })
-    });
-    if (!res.ok) {
-      const errorData = await res.json().catch(() => ({}));
-      throw new Error(errorData.details || errorData.error || 'Failed to generate join');
-    }
-    return res.json();
-  },
-
-  async generateTurn(roomId: string, payload: any) {
-    const headers = await getAuthHeaders();
-    const res = await fetch(`${API_URL}/gemini/generate`, {
-      method: 'POST',
-      headers,
-      body: JSON.stringify({ roomId, ...payload })
-    });
-    if (!res.ok) {
-      const errorData = await res.json().catch(() => ({}));
-      throw new Error(errorData.details || errorData.error || 'Failed to generate turn');
-    }
-    return res.json();
-  },
-
   async applyTurn(roomId: string, result: any) {
     const headers = await getAuthHeaders();
     const res = await fetch(`${API_URL}/rooms/${roomId}/apply-turn`, {
