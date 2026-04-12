@@ -14,8 +14,8 @@ export const playersRepository = {
       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26, NOW())
       RETURNING *;
     `;
-    const executor = client || { query };
-    const res = await executor.query<any>(sql, [
+    const executor = (client || { query }) as any;
+    const res = await executor.query(sql, [
       data.room_id, data.user_id, data.character_name, data.character_profile, data.hp, data.hp_max, data.mana, data.mana_max,
       data.stress, data.stress_max, data.stat_strength, data.stat_dexterity, data.stat_constitution, data.stat_intelligence,
       data.stat_wisdom, data.stat_charisma, 
@@ -40,8 +40,8 @@ export const playersRepository = {
       JOIN users u ON p.user_id = u.id
       WHERE p.room_id = $1::uuid
     `;
-    const executor = client || { query };
-    const res = await executor.query<any>(sql, [roomId]);
+    const executor = (client || { query }) as any;
+    const res = await executor.query(sql, [roomId]);
     return res.rows;
   },
 
@@ -52,8 +52,8 @@ export const playersRepository = {
       JOIN users u ON p.user_id = u.id
       WHERE p.room_id = $1::uuid AND p.user_id = $2::uuid
     `;
-    const executor = client || { query };
-    const res = await executor.query<any>(sql, [roomId, userId]);
+    const executor = (client || { query }) as any;
+    const res = await executor.query(sql, [roomId, userId]);
     return res.rows[0] || null;
   },
 
@@ -64,8 +64,8 @@ export const playersRepository = {
       WHERE id = $3 
       RETURNING *;
     `;
-    const executor = client || { query };
-    const res = await executor.query<any>(sql, [action, isReady, id]);
+    const executor = (client || { query }) as any;
+    const res = await executor.query(sql, [action, isReady, id]);
     
     // Fetch with external_user_id
     const updated = res.rows[0];
@@ -82,8 +82,8 @@ export const playersRepository = {
       WHERE id = $5 
       RETURNING *;
     `;
-    const executor = client || { query };
-    const res = await executor.query<any>(sql, [
+    const executor = (client || { query }) as any;
+    const res = await executor.query(sql, [
       updates.hp, 
       updates.mana, 
       updates.stress, 

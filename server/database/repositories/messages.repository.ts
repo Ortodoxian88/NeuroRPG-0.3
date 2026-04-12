@@ -9,8 +9,8 @@ export const messagesRepository = {
       VALUES ($1, $2, $3, $4, $5, $6, NOW())
       RETURNING *;
     `;
-    const executor = client || { query };
-    const res = await executor.query<MessageRow>(sql, [data.room_id, data.user_id, data.type, data.content, JSON.stringify(data.metadata || {}), data.turn_number]);
+    const executor = (client || { query }) as any;
+    const res = await executor.query(sql, [data.room_id, data.user_id, data.type, data.content, JSON.stringify(data.metadata || {}), data.turn_number]);
     return res.rows[0];
   },
 

@@ -16,8 +16,8 @@ export const roomsRepository = {
       VALUES ($1, $2, 'lobby', 0, 'waiting', '', $3, '[]', NOW(), NOW())
       RETURNING *;
     `;
-    const executor = client || { query };
-    const res = await executor.query<any>(sql, [hostUserId, joinCode, JSON.stringify(worldSettings || {})]);
+    const executor = (client || { query }) as any;
+    const res = await executor.query(sql, [hostUserId, joinCode, JSON.stringify(worldSettings || {})]);
     
     // Fetch with external_host_id
     return this.findById(res.rows[0].id, client);
@@ -30,8 +30,8 @@ export const roomsRepository = {
       JOIN users u ON r.host_user_id = u.id
       WHERE r.id = $1::uuid
     `;
-    const executor = client || { query };
-    const res = await executor.query<any>(sql, [id]);
+    const executor = (client || { query }) as any;
+    const res = await executor.query(sql, [id]);
     return res.rows[0] || null;
   },
 
@@ -42,18 +42,18 @@ export const roomsRepository = {
       JOIN users u ON r.host_user_id = u.id
       WHERE r.join_code = $1
     `;
-    const executor = client || { query };
-    const res = await executor.query<any>(sql, [joinCode]);
+    const executor = (client || { query }) as any;
+    const res = await executor.query(sql, [joinCode]);
     return res.rows[0] || null;
   },
 
   async updateStatus(id: string, status: string, client?: PoolClient): Promise<void> {
-    const executor = client || { query };
+    const executor = (client || { query }) as any;
     await executor.query('UPDATE rooms SET status = $1, updated_at = NOW() WHERE id = $2', [status, id]);
   },
 
   async updateTurn(id: string, turnNumber: number, turnStatus: string, storySummary: string, client?: PoolClient): Promise<void> {
-    const executor = client || { query };
+    const executor = (client || { query }) as any;
     await executor.query('UPDATE rooms SET turn_number = $1, turn_status = $2, story_summary = $3, updated_at = NOW() WHERE id = $4', [turnNumber, turnStatus, storySummary, id]);
   }
 };

@@ -65,6 +65,9 @@ export default function RoomView({ roomId, user, onLeave, onMinimize, onOpenBest
   const hasJoined = !!me;
   const isSpectator = !isHost && !me;
 
+  const hasAiResponseForCurrentTurn = messages.some(m => m.turn === room?.turn && m.role === 'ai');
+  const effectivelyGenerating = room?.isGenerating && !hasAiResponseForCurrentTurn;
+
   // Debug logging
   useEffect(() => {
     console.log("[RoomView] State Update:", {
@@ -91,14 +94,16 @@ export default function RoomView({ roomId, user, onLeave, onMinimize, onOpenBest
 
   // Typing indicator logic
   useEffect(() => {
-    if (room?.isGenerating) {
+    if (effectivelyGenerating) {
       setTypingIndicator(typingIndicators[Math.floor(Math.random() * typingIndicators.length)]);
       const interval = setInterval(() => {
         setTypingIndicator(typingIndicators[Math.floor(Math.random() * typingIndicators.length)]);
       }, 4000);
       return () => clearInterval(interval);
+    } else {
+      setTypingIndicator('');
     }
-  }, [room?.isGenerating]);
+  }, [effectivelyGenerating]);
 
   // Auto-summarization logic
   const isSummarizingRef = useRef(false);
@@ -328,6 +333,15 @@ export default function RoomView({ roomId, user, onLeave, onMinimize, onOpenBest
       generateAIResponse();
     }
   }, [players, isHost, room, messages]);
+
+  const handleResetRoomStatus = async () => {
+    if (!isHost || !room) return;
+    try {
+      await api.resetRoomStatus(roomId);
+    } catch (error) {
+      console.error("Failed to reset room status:", error);
+    }
+  };
 
   const handleJoin = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -785,21 +799,33 @@ export default function RoomView({ roomId, user, onLeave, onMinimize, onOpenBest
 
       {/* Input Area (Only visible in Chat tab when playing) */}
       {activeTab === 'chat' && room.status === 'playing' && (
-        <ActionInput 
-          me={me}
-          isSpectator={isSpectator}
-          isGenerating={room.isGenerating || false}
-          actionInput={actionInput}
-          isSubmittingAction={isSubmittingAction}
-          showCommands={showCommands}
-          filteredCommands={filteredCommands}
-          isRecording={isRecording}
-          onInputChange={handleInputChange}
-          onCommandSelect={handleCommandSelect}
-          onSubmit={handleSubmitAction}
-          onVoiceInput={handleVoiceInput}
-          appSettings={appSettings}
-        />
+        <div className="relative">
+          {isHost && room.isGenerating && !effectivelyGenerating && (
+            <div className="absolute -top-12 left-0 right-0 flex justify-center z-10">
+              <button 
+                onClick={handleResetRoomStatus}
+                className="bg-red-500/20 hover:bg-red-500/30 text-red-400 text-[10px] px-3 py-1 rounded-full border border-red-500/30 backdrop-blur-sm transition-all"
+              >
+                Сбросить статус "Ожидание ИИ"
+              </button>
+            </div>
+          )}
+          <ActionInput 
+            me={me}
+            isSpectator={isSpectator}
+            isGenerating={effectivelyGenerating}
+            actionInput={actionInput}
+            isSubmittingAction={isSubmittingAction}
+            showCommands={showCommands}
+            filteredCommands={filteredCommands}
+            isRecording={isRecording}
+            onInputChange={handleInputChange}
+            onCommandSelect={handleCommandSelect}
+            onSubmit={handleSubmitAction}
+            onVoiceInput={handleVoiceInput}
+            appSettings={appSettings}
+          />
+        </div>
       )}
 
       {/* Bottom Navigation */}

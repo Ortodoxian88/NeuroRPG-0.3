@@ -450,6 +450,13 @@ apiRouter.post("/gemini/generate", authMiddleware, async (req, res) => {
     const room = await roomsRepository.findById(roomId);
     if (!room) return res.status(404).json({ error: 'Room not found' });
 
+    if (room.turn_status === 'generating') {
+      console.log(`[AI] Generation already in progress for room ${roomId}. Skipping.`);
+      return res.status(409).json({ error: 'Generation already in progress' });
+    }
+
+    console.log(`[AI] Starting generation for room ${roomId}, turn ${room.turn_number}`);
+
     // Mark room as generating
     await query('UPDATE rooms SET turn_status = $1 WHERE id = $2', ['generating', roomId]);
     sseService.broadcast(roomId, 'room.updated', { ...room, turn_status: 'generating' });
@@ -497,6 +504,8 @@ apiRouter.post("/gemini/generate", authMiddleware, async (req, res) => {
       responseMimeType: "application/json"
     });
 
+    console.log(`[AI] Generation successful for room ${roomId}. Entering transaction...`);
+
     await withTransaction(async (client) => {
       // Save AI message
       const aiMessage = await messagesRepository.create({
@@ -507,6 +516,7 @@ apiRouter.post("/gemini/generate", authMiddleware, async (req, res) => {
         turn_number: room.turn_number,
         metadata: { reasoning: result.reasoning }
       }, client);
+      console.log(`[AI] Message saved: ${aiMessage.id}`);
       sseService.broadcast(roomId, 'message.new', aiMessage);
 
       // Update players
@@ -549,15 +559,20 @@ apiRouter.post("/gemini/generate", authMiddleware, async (req, res) => {
       worldSettings.factions = result.factionUpdates || worldSettings.factions;
       worldSettings.hiddenTimers = result.hiddenTimersUpdates || worldSettings.hiddenTimers;
 
+      // Note: result.quests is not in schema, but we keep the logic safe
+      const activeQuests = result.quests || room.active_quests || [];
+
       await client.query(
         'UPDATE rooms SET turn_number = $1, turn_status = $2, active_quests = $3, world_settings = $4 WHERE id = $5',
-        [newTurn, 'waiting', JSON.stringify(result.quests || room.active_quests || []), JSON.stringify(worldSettings), roomId]
+        [newTurn, 'waiting', JSON.stringify(activeQuests), JSON.stringify(worldSettings), roomId]
       );
 
       const updatedRoom = await roomsRepository.findById(roomId, client);
+      console.log(`[AI] Room updated to turn ${newTurn}`);
       sseService.broadcast(roomId, 'room.updated', updatedRoom);
     });
 
+    console.log(`[AI] Transaction committed for room ${roomId}`);
     res.json(result);
   } catch (error) {
     console.error('[AI] Generation error:', error);
@@ -567,6 +582,26 @@ apiRouter.post("/gemini/generate", authMiddleware, async (req, res) => {
       sseService.broadcast(req.body.roomId, 'room.updated', updatedRoom);
     }
     res.status(500).json({ error: "Failed to generate GM response" });
+  }
+});
+
+apiRouter.post("/rooms/:roomId/reset-status", authMiddleware, async (req, res) => {
+  try {
+    const { roomId } = req.params;
+    const uid = req.user!.id;
+
+    const room = await roomsRepository.findById(roomId);
+    if (!room || room.host_user_id !== uid) {
+      return res.status(403).json({ error: "Only host can reset status" });
+    }
+
+    await query('UPDATE rooms SET turn_status = $1 WHERE id = $2', ['waiting', roomId]);
+    const updatedRoom = await roomsRepository.findById(roomId);
+    sseService.broadcast(roomId, 'room.updated', updatedRoom);
+
+    res.json({ success: true });
+  } catch (error) {
+    res.status(500).json({ error: "Failed to reset status" });
   }
 });
 

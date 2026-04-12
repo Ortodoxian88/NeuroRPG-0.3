@@ -152,5 +152,15 @@ export const api = {
     });
     if (!res.ok) throw new Error('Failed to process archivist candidates');
     return res.json();
+  },
+
+  async resetRoomStatus(roomId: string) {
+    const headers = await getAuthHeaders();
+    const res = await fetch(`${API_URL}/rooms/${roomId}/reset-status`, {
+      method: 'POST',
+      headers
+    });
+    if (!res.ok) throw new Error('Failed to reset room status');
+    return res.json();
   }
 };
