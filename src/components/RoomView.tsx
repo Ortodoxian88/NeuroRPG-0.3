@@ -6,6 +6,7 @@ import { cn } from '@/src/lib/utils';
 import { typingIndicators } from '@/src/lib/indicators';
 import { processWikiCandidates } from '@/src/services/archivist';
 import { api } from '@/src/services/api';
+import { aiService } from '@/src/services/ai';
 import { SSEClient } from '@/src/services/sse';
 
 // Subcomponents
@@ -118,7 +119,8 @@ export default function RoomView({ roomId, user, onLeave, onMinimize, onOpenBest
           .map(m => `${m.role === 'system' ? 'ГМ' : m.role === 'ai' ? 'ИИ' : m.playerName}: ${m.content}`)
           .join('\n\n');
 
-        await api.summarize(roomId, room.storySummary || "", recentMessages);
+        const summary = await aiService.summarize(room.storySummary || "", recentMessages);
+        await api.updateSummary(roomId, summary, room.turn);
       } catch (error) {
         console.error("Error summarizing story:", error);
       } finally {
@@ -349,7 +351,7 @@ export default function RoomView({ roomId, user, onLeave, onMinimize, onOpenBest
     
     setIsJoining(true);
     try {
-      const parsed = await api.generateJoin(characterName, characterProfile, (room && room.status === 'playing') ? roomId : undefined);
+      const parsed = await aiService.generateJoin(characterName, characterProfile, (room && room.status === 'playing') ? room.scenario : undefined);
 
       const { player } = await api.joinRoom(room.joinCode, {
         characterName: characterName.trim(),
@@ -522,53 +524,31 @@ export default function RoomView({ roomId, user, onLeave, onMinimize, onOpenBest
     setRoom(prev => prev ? { ...prev, isGenerating: true } : null);
 
     try {
-      const playersContext = players.map(p => 
-        `${p.name} (HP: ${p.hp}/${p.maxHp}, MP: ${p.mana}/${p.maxMana}, Стресс: ${p.stress || 0}/100, Мировоззрение: ${p.alignment || 'Нейтральное'}). Инвентарь: ${p.inventory.join(', ') || 'пусто'}. Навыки: ${p.skills.join(', ') || 'пусто'}. Травмы: ${(p.injuries || []).join(', ') || 'нет'}. Состояния: ${(p.statuses || []).join(', ') || 'нет'}. Мутации: ${(p.mutations || []).join(', ') || 'нет'}. Репутация: ${JSON.stringify(p.reputation || {})}`
-      ).join('\n');
-
-      const recentMessages = messages.slice(-15).map(m => 
-        `${m.role === 'system' ? 'ГМ' : m.role === 'ai' ? 'ИИ' : m.playerName}: ${m.content}`
-      ).join('\n\n');
-
-      const actionsText = players.filter(p => p.isReady).map(p => 
-        `${p.name}: ${p.action}${p.isHiddenAction ? ' (ТАЙНО)' : ''}`
-      ).join('\n');
-
-      const data = await api.generateTurn(roomId, {
-        playersContext,
-        recentMessages,
-        turn: room.turn,
-        actionsText,
-        currentQuests: room.quests || [],
-        worldState: room.worldState,
-        factions: room.factions,
-        hiddenTimers: room.hiddenTimers,
-        gmTone: appSettings?.gmTone || 'classic',
-        difficulty: appSettings?.difficulty || 'normal',
-        goreLevel: appSettings?.goreLevel || 'medium',
-        language: appSettings?.language || 'ru'
+      const bestiary = await api.getBestiary();
+      
+      const result = await aiService.generateTurn({
+        room,
+        players,
+        messages,
+        bestiary
       });
 
-      const aiText = data.story;
-      
-      if (!aiText) {
-        throw new Error("ИИ не смог сгенерировать художественный текст. Попробуйте еще раз или проверьте настройки.");
+      if (!result || !result.story) {
+        throw new Error("ИИ не смог сгенерировать художественный текст. Попробуйте еще раз.");
       }
 
-      // The backend should handle saving the message, updating player states, and resetting readiness.
+      await api.applyTurn(roomId, result);
+
+      // The backend handles saving the message, updating player states, and resetting readiness.
       // We just need to process wiki candidates if they exist.
-      const wikiCandidates = data.wikiCandidates;
-      if (wikiCandidates && Array.isArray(wikiCandidates) && wikiCandidates.length > 0) {
-        // Don't await this, let it run in the background
-        processWikiCandidates(wikiCandidates, roomId, user?.id || 'unknown', setArchivistStatus);
-      }
+      // Note: In the new aiService, we might need to add wiki candidates generation if desired.
+      // For now, let's keep it simple.
 
     } catch (error: any) {
       console.error("Error generating AI response:", error);
       setGenerationError(error.message || "Произошла ошибка при генерации ответа ИИ.");
       setRoom(prev => prev ? { ...prev, isGenerating: false } : null);
-      // Reset ref on error so it can be retried manually if needed, 
-      // but the useEffect guard will still prevent immediate auto-retry if turn hasn't changed
+      generatingTurnRef.current = -1; // Allow retry
     } finally {
       isRequestingRef.current = false;
     }

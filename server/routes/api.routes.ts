@@ -6,7 +6,6 @@ import { messagesRepository } from '../database/repositories/messages.repository
 import { roomsRepository } from '../database/repositories/rooms.repository';
 import { playersRepository } from '../database/repositories/players.repository';
 import { bestiaryRepository } from '../database/repositories/bestiary.repository';
-import { GoogleGenAI, Type, ThinkingLevel, HarmCategory, HarmBlockThreshold } from '@google/genai';
 import { z } from 'zod';
 
 console.log('[API] Registering routes...');
@@ -17,106 +16,6 @@ apiRouter.use((req, res, next) => {
   console.log(`[API] Request: ${req.method} ${req.path}`);
   next();
 });
-
-// --- AI CONFIG & SCHEMAS ---
-
-const gameResponseSchema = z.object({
-  reasoning: z.string(),
-  story: z.string(),
-  worldUpdates: z.string(),
-  factionUpdates: z.record(z.string(), z.string()),
-  hiddenTimersUpdates: z.record(z.string(), z.number()),
-  stateUpdates: z.array(z.object({
-    uid: z.string(),
-    hp: z.number(),
-    mana: z.number(),
-    stress: z.number(),
-    alignment: z.string(),
-    inventory: z.array(z.string()),
-    skills: z.array(z.string()),
-    injuries: z.array(z.string()),
-    statuses: z.array(z.string()),
-    mutations: z.array(z.string()),
-    reputation: z.record(z.string(), z.number()),
-    stats: z.object({
-      speed: z.number(),
-      reaction: z.number(),
-      strength: z.number(),
-      power: z.number(),
-      durability: z.number(),
-      stamina: z.number()
-    })
-  })),
-  wikiCandidates: z.array(z.object({
-    name: z.string(),
-    rawFacts: z.string(),
-    reason: z.string()
-  }))
-});
-
-const safetySettings = [
-  { category: HarmCategory.HARM_CATEGORY_HARASSMENT, threshold: HarmBlockThreshold.BLOCK_NONE },
-  { category: HarmCategory.HARM_CATEGORY_HATE_SPEECH, threshold: HarmBlockThreshold.BLOCK_NONE },
-  { category: HarmCategory.HARM_CATEGORY_SEXUALLY_EXPLICIT, threshold: HarmBlockThreshold.BLOCK_NONE },
-  { category: HarmCategory.HARM_CATEGORY_DANGEROUS_CONTENT, threshold: HarmBlockThreshold.BLOCK_NONE },
-  { category: HarmCategory.HARM_CATEGORY_CIVIC_INTEGRITY, threshold: HarmBlockThreshold.BLOCK_NONE },
-];
-
-function getAIKeys(): string[] {
-  const primaryKey = process.env.GEMINI_API_KEY || process.env.API_KEY;
-  const additionalKeys = process.env.GEMINI_API_KEYS ? process.env.GEMINI_API_KEYS.split(',').map(k => k.trim()).filter(k => k) : [];
-  const allKeys = primaryKey ? [primaryKey, ...additionalKeys] : additionalKeys;
-  return Array.from(new Set(allKeys));
-}
-
-async function generateWithFallback(prompt: string, baseConfig: any, models: string[] = ["gemini-1.5-flash", "gemini-1.5-pro"]) {
-  let lastError;
-  const keys = getAIKeys();
-  if (keys.length === 0) throw new Error("GEMINI_API_KEY is missing.");
-
-  const modelList = baseConfig.model ? [baseConfig.model, ...models.filter(m => m !== baseConfig.model)] : models;
-
-  for (const key of keys) {
-    const ai = new GoogleGenAI({ apiKey: key });
-    for (const modelName of modelList) {
-      try {
-        const config = { ...baseConfig };
-        delete config.model;
-        if (modelName.includes("lite") && config.thinkingConfig) delete config.thinkingConfig;
-
-        const response = await ai.models.generateContent({
-          model: modelName,
-          contents: prompt,
-          config: {
-            ...config,
-            safetySettings
-          }
-        });
-
-        const text = response.text;
-        if (!text) throw new Error(`AI returned no text.`);
-        return text;
-      } catch (error: any) {
-        lastError = error;
-        if (error.message?.includes("429") || error.message?.includes("API key not valid")) break;
-        continue;
-      }
-    }
-  }
-  throw lastError;
-}
-
-async function generateWithValidation(prompt: string, baseConfig: any, attempt = 1): Promise<any> {
-    const maxAttempts = 3;
-    try {
-        const rawResponse = await generateWithFallback(prompt, baseConfig);
-        return gameResponseSchema.parse(JSON.parse(rawResponse));
-    } catch (error) {
-        if (attempt >= maxAttempts) throw error;
-        const retryPrompt = `${prompt}\n\nПРЕДЫДУЩИЙ ОТВЕТ БЫЛ НЕВАЛИДНЫМ: ${error}. ПОЖАЛУЙСТА, ИСПРАВЬ ОШИБКИ И ВЕРНИ ВАЛИДНЫЙ JSON.`;
-        return generateWithValidation(retryPrompt, baseConfig, attempt + 1);
-    }
-}
 
 // --- SMOKE TESTS ---
 
@@ -375,144 +274,31 @@ apiRouter.get('/bestiary', authMiddleware, async (req, res) => {
   }
 });
 
-// --- GEMINI / GAME LOGIC ---
+// --- AI ENDPOINTS (DEPRECATED - MOVED TO FRONTEND) ---
 
 apiRouter.post("/gemini/join", authMiddleware, async (req, res) => {
-  try {
-    const { characterName, characterProfile, roomId } = req.body;
-    const prompt = `Проанализируй анкету RPG персонажа и извлеки логичный стартовый инвентарь, список навыков/способностей и определи его мировоззрение (alignment).\nИмя персонажа: ${characterName}\nАнкета: ${characterProfile}\n\nВерни JSON объект с массивами "inventory" и "skills", а также строку "alignment". Названия должны быть на РУССКОМ языке.`;
-
-    const text = await generateWithFallback(prompt, {
-      responseMimeType: "application/json",
-      responseSchema: {
-        type: Type.OBJECT,
-        properties: {
-          inventory: { type: Type.ARRAY, items: { type: Type.STRING } },
-          skills: { type: Type.ARRAY, items: { type: Type.STRING } },
-          alignment: { type: Type.STRING }
-        },
-        required: ["inventory", "skills", "alignment"]
-      }
-    });
-
-    let jsonText = text;
-    const match = jsonText.match(/```(?:json)?\s*([\s\S]*?)\s*```/i);
-    if (match) jsonText = match[1];
-    const parsed = JSON.parse(jsonText);
-    
-    if (roomId) {
-      const room = await roomsRepository.findById(roomId);
-      if (room) {
-        const message = await messagesRepository.create({
-          room_id: roomId,
-          user_id: null,
-          type: 'system',
-          content: `Игрок **${characterName}** присоединился к игре.`,
-          turn_number: room.turn_number,
-          metadata: {}
-        });
-        sseService.broadcast(roomId, 'message.new', message);
-      }
-    }
-
-    res.json(parsed);
-  } catch (error: any) {
-    console.error('[AI] Join generation error:', error);
-    res.status(500).json({ 
-      error: "Failed to generate", 
-      details: error.message || String(error) 
-    });
-  }
+  res.status(410).json({ error: "Endpoint moved to frontend" });
 });
 
 apiRouter.post("/gemini/summarize", authMiddleware, async (req, res) => {
-  try {
-    const { currentSummary, recentMessages, roomId } = req.body;
-    const uid = req.user!.id;
-    
-    const room = await roomsRepository.findById(roomId);
-    if (!room || room.host_user_id !== uid) {
-      return res.status(403).json({ error: "Only host can summarize" });
-    }
-
-    const prompt = `Ты летописец RPG игры. Твоя задача - обновить краткое содержание сюжета.\nТекущее содержание: ${currentSummary || "Начало приключения."}\nНовые события: ${recentMessages}\n\nНапиши обновленное краткое содержание (не более 3-4 абзацев).`;
-
-    const aiText = await generateWithFallback(prompt, { model: "gemini-1.5-flash" });
-    
-    await query('UPDATE rooms SET story_summary = $1 WHERE id = $2', [aiText, roomId]);
-    
-    res.json({ text: aiText });
-  } catch (error: any) {
-    console.error('[AI] Summarize error:', error);
-    res.status(500).json({ 
-      error: "Failed to summarize", 
-      details: error.message || String(error) 
-    });
-  }
+  res.status(410).json({ error: "Endpoint moved to frontend" });
 });
 
 apiRouter.post("/gemini/generate", authMiddleware, async (req, res) => {
+  res.status(410).json({ error: "Endpoint moved to frontend" });
+});
+
+apiRouter.post("/rooms/:roomId/apply-turn", authMiddleware, async (req, res) => {
   try {
-    const { roomId, playersContext, recentMessages, turn, actionsText, currentQuests, worldState, factions, hiddenTimers, gmTone, difficulty, goreLevel, language } = req.body;
+    const { roomId } = req.params;
+    const { result } = req.body;
+    const uid = req.user!.id;
 
     const room = await roomsRepository.findById(roomId);
     if (!room) return res.status(404).json({ error: 'Room not found' });
+    if (room.host_user_id !== uid) return res.status(403).json({ error: 'Only host can apply turn' });
 
-    if (room.turn_status === 'generating') {
-      console.log(`[AI] Generation already in progress for room ${roomId}. Skipping.`);
-      return res.status(409).json({ error: 'Generation already in progress' });
-    }
-
-    console.log(`[AI] Starting generation for room ${roomId}, turn ${room.turn_number}`);
-
-    // Mark room as generating
-    await query('UPDATE rooms SET turn_status = $1 WHERE id = $2', ['generating', roomId]);
-    sseService.broadcast(roomId, 'room.updated', { ...room, turn_status: 'generating' });
-
-    const prompt = `Ты — ГМ в текстовой RPG. Обработай действия игроков, развивай сюжет, обновляй мир.
-
-КОНТЕКСТ:
-- Тон: ${gmTone}, Сложность: ${difficulty}, Жестокость: ${goreLevel}, Язык: ${language}
-- Мир: ${worldState || 'Начало'}
-- Квесты: ${JSON.stringify(currentQuests || [])}
-- Фракции: ${JSON.stringify(factions || {})}
-- Игроки: ${JSON.stringify(playersContext || [])}
-- События: ${recentMessages}
-- Действия: ${actionsText}
-
-ЗАДАЧА:
-1. Опиши последствия действий с учетом характеристик игроков.
-2. Обнови состояние игроков, мира, фракций и таймеров.
-3. Выдели важные факты для энциклопедии (wikiCandidates).
-
-ВЕРНИ JSON (по схеме):
-{
-  "reasoning": "Твои скрытые мысли как ГМ",
-  "story": "Художественное описание результатов хода",
-  "worldUpdates": "Обновление мира",
-  "factionUpdates": { "Фракция": "Статус" },
-  "hiddenTimersUpdates": { "Таймер": 1 },
-  "stateUpdates": [
-    {
-      "uid": "ID игрока",
-      "hp": 100, "mana": 50, "stress": 0, "alignment": "Neutral",
-      "inventory": ["Предмет"], "skills": ["Навык"],
-      "injuries": [], "statuses": [], "mutations": [],
-      "reputation": {},
-      "stats": { "speed": 10, "reaction": 10, "strength": 10, "power": 10, "durability": 10, "stamina": 10 }
-    }
-  ],
-  "wikiCandidates": [
-    { "name": "Название", "rawFacts": "Факты", "reason": "Почему важно" }
-  ]
-}`;
-
-    const result = await generateWithValidation(prompt, {
-      model: 'gemini-1.5-flash',
-      responseMimeType: "application/json"
-    });
-
-    console.log(`[AI] Generation successful for room ${roomId}. Entering transaction...`);
+    console.log(`[API] Applying turn for room ${roomId}, turn ${room.turn_number}`);
 
     await withTransaction(async (client) => {
       // Save AI message
@@ -524,7 +310,6 @@ apiRouter.post("/gemini/generate", authMiddleware, async (req, res) => {
         turn_number: room.turn_number,
         metadata: { reasoning: result.reasoning }
       }, client);
-      console.log(`[AI] Message saved: ${aiMessage.id}`);
       sseService.broadcast(roomId, 'message.new', aiMessage);
 
       // Update players
@@ -567,7 +352,6 @@ apiRouter.post("/gemini/generate", authMiddleware, async (req, res) => {
       worldSettings.factions = result.factionUpdates || worldSettings.factions;
       worldSettings.hiddenTimers = result.hiddenTimersUpdates || worldSettings.hiddenTimers;
 
-      // Note: result.quests is not in schema, but we keep the logic safe
       const activeQuests = result.quests || room.active_quests || [];
 
       await client.query(
@@ -576,27 +360,35 @@ apiRouter.post("/gemini/generate", authMiddleware, async (req, res) => {
       );
 
       const updatedRoom = await roomsRepository.findById(roomId, client);
-      console.log(`[AI] Room updated to turn ${newTurn}`);
       sseService.broadcast(roomId, 'room.updated', updatedRoom);
     });
 
-    console.log(`[AI] Transaction committed for room ${roomId}`);
-    res.json(result);
+    res.json({ success: true });
   } catch (error: any) {
-    console.error('[AI] Generation error:', error);
-    if (req.body.roomId) {
-      try {
-        await query('UPDATE rooms SET turn_status = $1 WHERE id = $2', ['waiting', req.body.roomId]);
-        const updatedRoom = await roomsRepository.findById(req.body.roomId);
-        sseService.broadcast(req.body.roomId, 'room.updated', updatedRoom);
-      } catch (resetErr) {
-        console.error('[AI] Failed to reset turn_status after error:', resetErr);
-      }
-    }
-    res.status(500).json({ 
-      error: "Failed to generate GM response", 
-      details: error.message || String(error) 
-    });
+    console.error('[API] Apply turn error:', error);
+    res.status(500).json({ error: "Failed to apply turn", details: error.message });
+  }
+});
+
+apiRouter.post("/rooms/:roomId/summary", authMiddleware, async (req, res) => {
+  try {
+    const { roomId } = req.params;
+    const { summary, turn } = req.body;
+    const uid = req.user!.id;
+
+    const room = await roomsRepository.findById(roomId);
+    if (!room) return res.status(404).json({ error: 'Room not found' });
+    if (room.host_user_id !== uid) return res.status(403).json({ error: 'Only host can update summary' });
+
+    await query(
+      'UPDATE rooms SET story_summary = $1, last_summary_turn = $2 WHERE id = $3',
+      [summary, turn, roomId]
+    );
+
+    res.json({ success: true });
+  } catch (error: any) {
+    console.error('[API] Update summary error:', error);
+    res.status(500).json({ error: "Failed to update summary", details: error.message });
   }
 });
 
@@ -621,102 +413,7 @@ apiRouter.post("/rooms/:roomId/reset-status", authMiddleware, async (req, res) =
 });
 
 apiRouter.post("/gemini/archivist", authMiddleware, async (req, res) => {
-  try {
-    const { candidates, roomId } = req.body;
-    const uid = req.user!.id;
-
-    if (!candidates || !Array.isArray(candidates) || candidates.length === 0) {
-      return res.json({ success: true });
-    }
-
-    for (const candidate of candidates) {
-      try {
-        // Check if entry already exists
-        const existingEntries = await bestiaryRepository.search(candidate.name);
-        // Find exact match
-        const existingEntry = existingEntries.find(e => e.title.toLowerCase() === candidate.name.toLowerCase());
-
-        const prompt = `Ты - Магистр Элиас, Архивариус и летописец. Тебе принесли сырые факты о сущности/объекте/локации.
-Твоя задача - решить, достойно ли это записи в Великую Энциклопедию (Википедию).
-Если это банальщина (обычный волк, простой камень, крестьянин), верни JSON: {"rejected": true, "reason": "Слишком банально"}.
-Если это достойно, напиши подробную, научную и атмосферную статью.
-Не создавай отдельные статьи для каждого подвида (например, разных гоблинов или вариаций одного меча). Если это подвид, обновляй основную статью, добавляя фразу "преобладает разнообразием" и описывая новые виды там.
-
-Имя: ${candidate.name}
-Сырые факты: ${candidate.rawFacts}
-Причина добавления от разведчиков: ${candidate.reason}
-${existingEntry ? `У нас уже есть запись об этом:\n${existingEntry.content}\nДОПОЛНИ ЕЁ новыми фактами, если они есть, и повысь уровень знаний.` : 'Это новая запись.'}
-
-Верни СТРОГО JSON объект:
-{
-  "rejected": false,
-  "category": "Флора" | "Фауна" | "Артефакты" | "Магические Аномалии" | "Фракции" | "Исторические Личности" | "Локации" | "Заклинания",
-  "nature": "positive" | "negative" | "neutral",
-  "tags": ["тег1", "тег2"],
-  "level": 1 | 2 | 3, // 1 - внешний вид, 2 - повадки/свойства, 3 - полная анатомия/секреты
-  "content": "Текст статьи в формате Markdown. Пиши от лица Магистра Элиаса, используй научный, но фэнтезийный стиль.",
-  "authorNotes": "Короткая сноска или комментарий от автора (опционально)"
-}`;
-
-        const text = await generateWithFallback(prompt, {
-          responseMimeType: "application/json",
-          responseSchema: {
-            type: Type.OBJECT,
-            properties: {
-              rejected: { type: Type.BOOLEAN },
-              reason: { type: Type.STRING },
-              category: { type: Type.STRING },
-              nature: { type: Type.STRING },
-              tags: { type: Type.ARRAY, items: { type: Type.STRING } },
-              level: { type: Type.NUMBER },
-              content: { type: Type.STRING },
-              authorNotes: { type: Type.STRING }
-            }
-          }
-        });
-
-        let jsonText = text;
-        const match = jsonText.match(/```(?:json)?\s*([\s\S]*?)\s*```/i);
-        if (match) jsonText = match[1];
-        const parsed = JSON.parse(jsonText);
-
-        if (parsed.rejected) {
-          console.log(`Archivist rejected ${candidate.name}: ${parsed.reason}`);
-          continue;
-        }
-
-        if (existingEntry) {
-          await query(
-            'UPDATE bestiary SET category = $1, nature = $2, tags = $3, knowledge_level = $4, content = $5, author_notes = $6 WHERE id = $7',
-            [parsed.category, parsed.nature || 'neutral', JSON.stringify(parsed.tags || []), parsed.level, parsed.content, parsed.authorNotes || null, existingEntry.id]
-          );
-        } else {
-          await bestiaryRepository.create({
-            slug: candidate.name.toLowerCase().replace(/\s+/g, '-'),
-            title: candidate.name,
-            category: parsed.category,
-            nature: parsed.nature || 'neutral',
-            tags: parsed.tags,
-            knowledge_level: parsed.level,
-            content: parsed.content,
-            author_notes: parsed.authorNotes || null,
-            source_room_id: roomId,
-            discovered_by_user_id: req.user!.id
-          });
-        }
-      } catch (error) {
-        console.error(`Failed to process wiki candidate ${candidate.name}:`, error);
-      }
-    }
-
-    res.json({ success: true });
-  } catch (error: any) {
-    console.error('[AI] Archivist error:', error);
-    res.status(500).json({ 
-      error: "Failed to process archivist candidates", 
-      details: error.message || String(error) 
-    });
-  }
+  res.status(410).json({ error: "Endpoint moved to frontend" });
 });
 
 // --- ROOM MESSAGES ---

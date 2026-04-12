@@ -130,17 +130,28 @@ export const api = {
     return res.json();
   },
 
-  async summarize(roomId: string, currentSummary: string, recentMessages: string) {
+  async applyTurn(roomId: string, result: any) {
     const headers = await getAuthHeaders();
-    const res = await fetch(`${API_URL}/gemini/summarize`, {
+    const res = await fetch(`${API_URL}/rooms/${roomId}/apply-turn`, {
       method: 'POST',
       headers,
-      body: JSON.stringify({ roomId, currentSummary, recentMessages })
+      body: JSON.stringify({ result })
     });
     if (!res.ok) {
       const errorData = await res.json().catch(() => ({}));
-      throw new Error(errorData.details || errorData.error || 'Failed to summarize');
+      throw new Error(errorData.details || errorData.error || 'Failed to apply turn');
     }
+    return res.json();
+  },
+
+  async updateSummary(roomId: string, summary: string, turn: number) {
+    const headers = await getAuthHeaders();
+    const res = await fetch(`${API_URL}/rooms/${roomId}/summary`, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({ summary, turn })
+    });
+    if (!res.ok) throw new Error('Failed to update summary');
     return res.json();
   },
 
@@ -149,20 +160,6 @@ export const api = {
     const headers = await getAuthHeaders();
     const res = await fetch(`${API_URL}/bestiary?search=${encodeURIComponent(search)}&category=${encodeURIComponent(category)}`, { headers });
     if (!res.ok) throw new Error('Failed to fetch bestiary');
-    return res.json();
-  },
-
-  async processArchivist(roomId: string, candidates: any[]) {
-    const headers = await getAuthHeaders();
-    const res = await fetch(`${API_URL}/gemini/archivist`, {
-      method: 'POST',
-      headers,
-      body: JSON.stringify({ roomId, candidates })
-    });
-    if (!res.ok) {
-      const errorData = await res.json().catch(() => ({}));
-      throw new Error(errorData.details || errorData.error || 'Failed to process archivist candidates');
-    }
     return res.json();
   },
 
